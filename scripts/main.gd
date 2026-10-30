@@ -29,8 +29,8 @@ var rng := RandomNumberGenerator.new()
 var state := {}
 var world_root: Node3D
 var player: CharacterBody3D
-var player_visual: Node3D
-var dali: Node3D
+var player_visual: MascotActor
+var dali: MascotActor
 var camera: Camera3D
 var canvas: CanvasLayer
 var ui_root: Control
@@ -42,6 +42,7 @@ var side_guide: PanelContainer
 var guide_body: VBoxContainer
 var guide_open := false
 var guide_tip: Label
+var chapter_goal_text: Label
 var objective_text: Label
 var actor_text: Label
 var gauges: Dictionary = {}
@@ -83,15 +84,15 @@ func _process(delta: float) -> void:
 	_update_nearby_target()
 	_update_hud()
 	if is_instance_valid(player_visual):
-		player_visual.position.y = sin(Time.get_ticks_msec() * 0.006) * 0.018
+		player_visual.set_moving(Vector2(player.velocity.x, player.velocity.z).length() > 0.15)
 	if is_instance_valid(dali) and is_instance_valid(player) and game_active:
-		var companion_target := player.global_position + Vector3(0.9, 0.0, 0.72)
+		var companion_target := player.global_position + Vector3(1.75, 0.0, 0.05)
 		dali.global_position = dali.global_position.lerp(companion_target, minf(delta * 2.5, 1.0))
-		dali.position.y = sin(Time.get_ticks_msec() * 0.0038 + 1.4) * 0.035
+		dali.set_moving(Vector2(player.velocity.x, player.velocity.z).length() > 0.15)
 	if is_instance_valid(camera) and is_instance_valid(player):
-		var wanted := player.global_position + Vector3(0.2, 3.35, 6.3)
+		var wanted := player.global_position + Vector3(1.5, 3.0, 6.1)
 		camera.global_position = camera.global_position.lerp(wanted, minf(delta * 4.2, 1.0))
-		camera.look_at(player.global_position + Vector3(0, 1.05, -0.65), Vector3.UP)
+		camera.look_at(player.global_position + Vector3(1.15, 0.95, -0.45), Vector3.UP)
 
 
 func _physics_process(_delta: float) -> void:
@@ -108,8 +109,8 @@ func _physics_process(_delta: float) -> void:
 	player.velocity.z = direction.z * 3.4
 	player.velocity.y = 0.0
 	player.move_and_slide()
-	player.position.x = clampf(player.position.x, -7.0, 7.0)
-	player.position.z = clampf(player.position.z, -5.3, 5.5)
+	player.position.x = clampf(player.position.x, -5.25, 5.25)
+	player.position.z = clampf(player.position.z, -3.75, 4.15)
 	if direction.length_squared() > 0.01 and is_instance_valid(player_visual):
 		player_visual.rotation.y = atan2(direction.x, direction.z)
 
@@ -156,11 +157,13 @@ func _build_world() -> void:
 	var environment_node := WorldEnvironment.new()
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color("#f8f7f2")
+	environment.background_color = Color("#e8f0eb")
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color("#fff4e9")
-	environment.ambient_light_energy = 1.05
+	environment.ambient_light_energy = 0.88
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	environment.ssr_enabled = false
+	environment.glow_enabled = false
 	environment_node.environment = environment
 	add_child(environment_node)
 
@@ -175,35 +178,9 @@ func _build_player() -> void:
 	collision.shape = capsule
 	collision.position.y = 0.74
 	player.add_child(collision)
-	player_visual = Node3D.new()
-	player_visual.name = "CharacterArt"
+	player_visual = MascotActor.create_nareumi()
+	player_visual.name = "나라미"
 	player.add_child(player_visual)
-	_add_ellipsoid(player_visual, Vector3(0, 0.72, 0), Vector3(0.52, 0.63, 0.44), Color("#fffdfa"), 0.56)
-	_add_ellipsoid(player_visual, Vector3(0, 1.48, 0), Vector3(0.75, 0.72, 0.64), Color("#fffefa"), 0.45)
-	# Nareumi's broad, pale-blue aviator visor and glossy eyes.
-	_add_ellipsoid(player_visual, Vector3(0, 1.49, 0.49), Vector3(0.82, 0.42, 0.19), Color("#a9cbd0"), 0.34)
-	_add_ellipsoid(player_visual, Vector3(0, 1.5, 0.555), Vector3(0.77, 0.37, 0.17), Color("#c9edf2"), 0.2)
-	for side in [-1.0, 1.0]:
-		_add_ellipsoid(player_visual, Vector3(side * 0.29, 1.48, 0.71), Vector3(0.12, 0.145, 0.07), Color("#26313b"), 0.16)
-		_add_ellipsoid(player_visual, Vector3(side * 0.32 - 0.035, 1.54, 0.77), Vector3(0.035, 0.04, 0.022), Color("#ffffff"), 0.12)
-		_add_ellipsoid(player_visual, Vector3(side * 0.61, 0.72, 0), Vector3(0.34, 0.2, 0.31), Color("#f5f3ed"), 0.56)
-		_add_ellipsoid(player_visual, Vector3(side * 0.78, 0.59, 0.05), Vector3(0.22, 0.16, 0.2), Color("#333b3e"), 0.52)
-		_add_ellipsoid(player_visual, Vector3(side * 0.2, 0.15, 0.13), Vector3(0.22, 0.15, 0.29), Color("#e7a14a"), 0.4)
-		_add_ellipsoid(player_visual, Vector3(side * 0.2, 0.1, 0.32), Vector3(0.13, 0.12, 0.16), Color("#edae55"), 0.4)
-	_add_ellipsoid(player_visual, Vector3(0, 1.25, 0.69), Vector3(0.2, 0.13, 0.19), Color("#e9a147"), 0.37)
-	_add_ellipsoid(player_visual, Vector3(0, 1.205, 0.76), Vector3(0.12, 0.035, 0.075), Color("#b87839"), 0.45)
-	var scarf := MeshInstance3D.new()
-	var scarf_mesh := TorusMesh.new()
-	scarf_mesh.inner_radius = 0.36
-	scarf_mesh.outer_radius = 0.52
-	scarf.mesh = scarf_mesh
-	scarf.position = Vector3(0, 1.02, 0)
-	scarf.scale = Vector3(1.0, 0.42, 0.88)
-	scarf.material_override = _mat(Color("#c84a46"), 0.36)
-	player_visual.add_child(scarf)
-	_add_ellipsoid(player_visual, Vector3(0.47, 0.99, -0.1), Vector3(0.33, 0.105, 0.13), Color("#ca4d49"), 0.4)
-	_add_ellipsoid(player_visual, Vector3(0.62, 0.93, -0.16), Vector3(0.28, 0.1, 0.12), Color("#bb3f3e"), 0.4)
-	_add_ellipsoid(player_visual, Vector3(0, 0.47, -0.44), Vector3(0.16, 0.3, 0.24), Color("#30383b"), 0.68)
 	_build_dali()
 	add_child(player)
 
@@ -213,9 +190,9 @@ func _build_camera() -> void:
 	camera.name = "FollowCamera"
 	camera.current = true
 	camera.fov = 47.0
-	camera.position = Vector3(0.2, 3.35, 6.3)
+	camera.position = Vector3(1.5, 3.0, 6.1)
 	add_child(camera)
-	camera.look_at(Vector3(0, 1.0, 3.8), Vector3.UP)
+	camera.look_at(Vector3(1.15, 0.95, -0.45), Vector3.UP)
 
 
 func _mat(color: Color, roughness: float = 0.8, metallic: float = 0.0) -> StandardMaterial3D:
@@ -277,43 +254,10 @@ func _add_ellipsoid(parent: Node3D, position: Vector3, dimensions: Vector3, colo
 
 
 func _build_dali() -> void:
-	dali = Node3D.new()
+	dali = MascotActor.create_dali()
 	dali.name = "Dali_Guide_Mascot"
-	dali.position = Vector3(0.9, 0, 5.5)
+	dali.position = Vector3(1.75, 0, 5.05)
 	add_child(dali)
-	_add_ellipsoid(dali, Vector3(0, 0.56, 0), Vector3(0.46, 0.53, 0.38), Color("#f09b45"), 0.44)
-	_add_ellipsoid(dali, Vector3(0, 1.28, 0), Vector3(0.69, 0.66, 0.58), Color("#f2a147"), 0.4)
-	# Round ears with pale inner fur.
-	for side in [-1.0, 1.0]:
-		_add_ellipsoid(dali, Vector3(side * 0.49, 1.78, -0.02), Vector3(0.25, 0.27, 0.2), Color("#e9913d"), 0.4)
-		_add_ellipsoid(dali, Vector3(side * 0.49, 1.78, 0.15), Vector3(0.135, 0.15, 0.075), Color("#f7e5d4"), 0.62)
-		_add_ellipsoid(dali, Vector3(side * 0.235, 1.28, 0.5), Vector3(0.105, 0.12, 0.075), Color("#292e39"), 0.16)
-		_add_ellipsoid(dali, Vector3(side * 0.255 - 0.03, 1.33, 0.56), Vector3(0.034, 0.037, 0.022), Color("#ffffff"), 0.12)
-		_add_ellipsoid(dali, Vector3(side * 0.34, 0.78, -0.26), Vector3(0.13, 0.43, 0.085), Color("#935537"), 0.68)
-		_add_ellipsoid(dali, Vector3(side * 0.2, 0.13, 0.1), Vector3(0.18, 0.13, 0.25), Color("#d98236"), 0.48)
-	# White face, belly, and a tiny orange nose.
-	_add_ellipsoid(dali, Vector3(0, 1.03, 0.48), Vector3(0.44, 0.3, 0.22), Color("#fffaf4"), 0.58)
-	_add_ellipsoid(dali, Vector3(-0.145, 1.12, 0.55), Vector3(0.21, 0.15, 0.14), Color("#fffdf8"), 0.52)
-	_add_ellipsoid(dali, Vector3(0.145, 1.12, 0.55), Vector3(0.21, 0.15, 0.14), Color("#fffdf8"), 0.52)
-	_add_ellipsoid(dali, Vector3(0, 1.08, 0.72), Vector3(0.075, 0.055, 0.06), Color("#e87e39"), 0.3)
-	_add_ellipsoid(dali, Vector3(0, 0.58, 0.34), Vector3(0.3, 0.35, 0.11), Color("#fffaf3"), 0.58)
-	# Three soft forehead stripes and a curled plume tail.
-	for i in range(3):
-		var stripe := MeshInstance3D.new()
-		var stripe_mesh := CapsuleMesh.new()
-		stripe_mesh.radius = 0.07
-		stripe_mesh.height = 0.52
-		stripe.mesh = stripe_mesh
-		stripe.position = Vector3((i - 1) * 0.19, 1.78, 0.43)
-		stripe.material_override = _mat(Color("#d97b3d"), 0.56)
-		dali.add_child(stripe)
-	_add_ellipsoid(dali, Vector3(0.54, 0.35, -0.23), Vector3(0.32, 0.29, 0.3), Color("#ee9a43"), 0.5)
-	_add_ellipsoid(dali, Vector3(0.72, 0.54, -0.3), Vector3(0.25, 0.23, 0.24), Color("#fff9f2"), 0.59)
-	# A gentle curved smile made from tiny glossy segments.
-	for i in range(5):
-		var x := (float(i) - 2.0) * 0.055
-		var y := 0.985 + (0.035 if i == 2 else (0.01 if i == 1 or i == 3 else -0.02))
-		_add_ellipsoid(dali, Vector3(x, y, 0.675), Vector3(0.045, 0.022, 0.022), Color("#40353a"), 0.24)
 
 
 func _add_npc(parent: Node3D, actor_name: String, position: Vector3, jacket: Color) -> void:
@@ -382,8 +326,13 @@ func _set_room(room: String) -> void:
 	_add_wall_sign(_room_title(room))
 	_build_hotspots(_room_hotspot_data(room))
 	if is_instance_valid(player):
-		player.global_position = Vector3(0, 0.02, 4.8 if room == "office" else 5.0)
+		player.global_position = Vector3(0, 0.02, 3.65 if room == "office" else 3.8)
 		player.velocity = Vector3.ZERO
+		# Keep the title-screen diorama framed around the player before gameplay
+		# starts; the follow camera intentionally pauses while a modal is open.
+		if is_instance_valid(camera):
+			camera.global_position = player.global_position + Vector3(1.5, 3.0, 6.1)
+			camera.look_at(player.global_position + Vector3(1.15, 0.95, -0.45), Vector3.UP)
 	_update_hud()
 
 
@@ -396,35 +345,36 @@ func _room_palette(room: String) -> Dictionary:
 
 
 func _build_room_shell(palette: Dictionary) -> void:
-	var floor := _add_box(world_root, "Oak floor", Vector3(0, -0.16, 0), Vector3(16, 0.32, 14), palette.floor, true)
+	var floor := _add_box(world_root, "Oak floor", Vector3(0, -0.16, 0), Vector3(12.2, 0.32, 10.2), palette.floor, true)
 	floor.material_override.roughness = 0.84
-	for row in range(11):
-		_add_box(world_root, "Floor seam", Vector3(0, 0.005, -6.25 + row * 1.25), Vector3(15.8, 0.012, 0.018), Color("#d1c7b8"), false)
-	_add_box(world_root, "Back wall", Vector3(0, 2, -7), Vector3(16, 4, 0.22), palette.wall, true)
-	_add_box(world_root, "Left wall", Vector3(-8, 2, 0), Vector3(0.22, 4, 14), palette.wall, true)
-	_add_box(world_root, "Right wall", Vector3(8, 2, 0), Vector3(0.22, 4, 14), palette.wall, true)
-	_add_box(world_root, "Ceiling", Vector3(0, 4.08, 0), Vector3(16, 0.16, 14), Color("#e9e1d1"))
-	for x in [-5.0, -2.3]:
-		_add_box(world_root, "Window", Vector3(x, 2.62, -6.82), Vector3(2.25, 1.55, 0.045), Color("#c8edf1"), false, 0.24)
-		_add_box(world_root, "Window frame vertical", Vector3(x, 2.62, -6.77), Vector3(0.06, 1.64, 0.08), Color("#fffaf1"))
-		_add_box(world_root, "Window frame horizontal", Vector3(x, 2.62, -6.76), Vector3(2.3, 0.06, 0.08), Color("#fffaf1"))
-		_add_box(world_root, "Window mullion", Vector3(x + 0.02, 2.62, -6.72), Vector3(0.035, 1.45, 0.06), Color("#fffaf1"))
-	_add_box(world_root, "Picture rail", Vector3(0, 3.45, -6.83), Vector3(15.75, 0.1, 0.1), Color("#b6c6bc"))
-	for x in [-5.0, 0.0, 5.0]:
-		_add_box(world_root, "Ceiling beam", Vector3(x, 3.9, 0), Vector3(0.09, 0.12, 13.4), Color("#e1d6c4"))
-		_add_box(world_root, "Pendant shade", Vector3(x, 3.58, -0.8), Vector3(0.6, 0.09, 0.58), Color("#fff0ca"))
+	for row in range(9):
+		_add_box(world_root, "Floor seam", Vector3(0, 0.005, -4.45 + row * 1.12), Vector3(12.0, 0.012, 0.018), Color("#d1c7b8"), false)
+	_add_box(world_root, "Back wall", Vector3(0, 2, -5.15), Vector3(12.2, 4, 0.22), palette.wall, true)
+	_add_box(world_root, "Left wall", Vector3(-6.1, 2, 0), Vector3(0.22, 4, 10.2), palette.wall, true)
+	_add_box(world_root, "Right wall", Vector3(6.1, 2, 0), Vector3(0.22, 4, 10.2), palette.wall, true)
+	_add_box(world_root, "Ceiling", Vector3(0, 4.08, 0), Vector3(12.2, 0.16, 10.2), Color("#e9e1d1"))
+	for x in [-3.65, -1.35]:
+		_add_box(world_root, "Window", Vector3(x, 2.62, -4.98), Vector3(1.9, 1.5, 0.045), Color("#c8edf1"), false, 0.24)
+		_add_box(world_root, "Window frame vertical", Vector3(x, 2.62, -4.93), Vector3(0.06, 1.6, 0.08), Color("#fffaf1"))
+		_add_box(world_root, "Window frame horizontal", Vector3(x, 2.62, -4.92), Vector3(1.96, 0.06, 0.08), Color("#fffaf1"))
+		_add_box(world_root, "Window mullion", Vector3(x + 0.02, 2.62, -4.88), Vector3(0.035, 1.42, 0.06), Color("#fffaf1"))
+	_add_box(world_root, "Picture rail", Vector3(0, 3.45, -4.99), Vector3(11.9, 0.1, 0.1), Color("#b6c6bc"))
+	for x in [-3.75, 0.0, 3.75]:
+		_add_box(world_root, "Ceiling beam", Vector3(x, 3.9, 0), Vector3(0.09, 0.12, 9.6), Color("#e1d6c4"))
+		_add_box(world_root, "Pendant shade", Vector3(x, 3.58, -0.4), Vector3(0.5, 0.08, 0.48), Color("#fff0ca"))
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-43, -28, 0)
 	sun.light_color = Color("#fff0d4")
-	sun.light_energy = 1.8
+	sun.light_energy = 0.88
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 18.0
+	sun.light_size = 2.2
+	sun.directional_shadow_max_distance = 12.0
 	world_root.add_child(sun)
 	var ambient := OmniLight3D.new()
 	ambient.position = Vector3(0, 3.1, -0.5)
 	ambient.light_color = Color("#fff0d4")
-	ambient.light_energy = 1.45
-	ambient.omni_range = 12.0
+	ambient.light_energy = 0.38
+	ambient.omni_range = 9.0
 	world_root.add_child(ambient)
 
 
@@ -486,12 +436,12 @@ func _build_office() -> void:
 	_add_desk(world_root, Vector3(-0.5, 0, -0.2), 3.15, 1.5, Color("#d2b893"))
 	_add_computer(world_root, Vector3(0.25, 0, -0.45))
 	_add_paper_stack(world_root, Vector3(-1.35, 1.0, -0.3))
-	_add_cabinet(world_root, Vector3(-6.25, 0, -1.6), Color("#b9aa95"))
-	_add_plant(world_root, Vector3(6.35, 0, -4.8))
-	_add_desk(world_root, Vector3(4.6, 0, -2.7), 2.7, 1.38, Color("#a7b5a2"))
-	_add_notice_board(world_root, Vector3(-6.2, 2.25, -6.65), "입찰공고")
-	_add_box(world_root, "Bench seat", Vector3(4.45, 0.52, -1.4), Vector3(0.82, 0.12, 0.62), Color("#90a79b"))
-	_add_box(world_root, "Bench back", Vector3(4.45, 0.93, -1.66), Vector3(0.82, 0.68, 0.1), Color("#90a79b"))
+	_add_cabinet(world_root, Vector3(-4.75, 0, -1.2), Color("#b9aa95"))
+	_add_plant(world_root, Vector3(4.9, 0, -3.9))
+	_add_desk(world_root, Vector3(3.75, 0, -2.2), 2.45, 1.24, Color("#a7b5a2"))
+	_add_notice_board(world_root, Vector3(-4.7, 2.25, -4.8), "입찰공고")
+	_add_box(world_root, "Bench seat", Vector3(3.7, 0.52, -1.0), Vector3(0.82, 0.12, 0.62), Color("#90a79b"))
+	_add_box(world_root, "Bench back", Vector3(3.7, 0.93, -1.26), Vector3(0.82, 0.68, 0.1), Color("#90a79b"))
 	_add_box(world_root, "Laptop base", Vector3(1.3, 1.0, -0.1), Vector3(0.62, 0.035, 0.44), Color("#434f4c"))
 	_add_box(world_root, "Lamp base", Vector3(-2.0, 1.0, -0.25), Vector3(0.2, 0.035, 0.2), Color("#a98c60"), false, 0.32)
 	var stem := MeshInstance3D.new()
@@ -504,16 +454,13 @@ func _build_office() -> void:
 	stem.material_override = _mat(Color("#a98c60"), 0.35, 0.2)
 	world_root.add_child(stem)
 	_add_sphere(world_root, Vector3(-2.0, 1.45, -0.25), 0.14, Color("#e2c78c"))
-	_add_npc(world_root, "박 실장", Vector3(5.6, 0.02, -1.2), Color("#52685d"))
+	_add_npc(world_root, "박 실장", Vector3(4.8, 0.02, -0.9), Color("#52685d"))
 
 
 func _build_city_room() -> void:
 	_add_desk(world_root, Vector3(0, 0, -0.35), 4.6, 1.6, Color("#9eb5a6"))
 	_add_paper_stack(world_root, Vector3(-0.65, 1.0, -0.5))
-	_add_cabinet(world_root, Vector3(-6.2, 0, -1.7), Color("#b1c2b2"))
-	_add_cabinet(world_root, Vector3(6.2, 0, -3.8), Color("#b1c2b2"))
-	_add_plant(world_root, Vector3(6.4, 0, 4.2))
-	_add_notice_board(world_root, Vector3(-5.7, 2.2, -6.65), "구매 규격")
+	_add_notice_board(world_root, Vector3(-4.65, 2.2, -4.8), "구매 규격")
 	_add_computer(world_root, Vector3(1.0, 0, -0.55))
 	_add_npc(world_root, "이 주무관", Vector3(2.7, 0.02, 1.1), Color("#55796a"))
 
@@ -522,16 +469,16 @@ func _build_review_room() -> void:
 	_add_desk(world_root, Vector3(0, 0, -0.35), 4.6, 1.65, Color("#86a9ae"))
 	_add_paper_stack(world_root, Vector3(-0.55, 1.0, -0.5))
 	_add_paper_stack(world_root, Vector3(0.85, 1.0, -0.5))
-	_add_cabinet(world_root, Vector3(-6.15, 0, -2.0), Color("#b0c4c2"))
-	_add_cabinet(world_root, Vector3(6.15, 0, -2.0), Color("#b0c4c2"))
-	_add_notice_board(world_root, Vector3(-5.6, 2.2, -6.65), "심사 접수")
+	_add_cabinet(world_root, Vector3(-4.75, 0, -1.8), Color("#b0c4c2"))
+	_add_cabinet(world_root, Vector3(4.75, 0, -1.8), Color("#b0c4c2"))
+	_add_notice_board(world_root, Vector3(-4.6, 2.2, -4.8), "심사 접수")
 	_add_computer(world_root, Vector3(0.1, 0, -0.52))
 	_add_npc(world_root, "윤서진", Vector3(2.65, 0.02, 1.2), Color("#315768"))
 
 
 func _build_showroom() -> void:
 	var colors := [Color("#e6ad88"), Color("#a9c4ad"), Color("#a8cbd2")]
-	var xs := [-4.3, 0.0, 4.3]
+	var xs := [-3.25, 0.0, 3.25]
 	var names := ["한빛 · 실속", "대성 · 베이직", "새길 · 모던"]
 	for i in range(3):
 		var x: float = xs[i]
@@ -544,19 +491,19 @@ func _build_showroom() -> void:
 		_add_box(world_root, "Product name plate", Vector3(x, 1.35, 0.22), Vector3(1.6, 0.16, 0.08), Color("#435951"))
 		if i == 0:
 			_add_notice_board(world_root, Vector3(x, 1.75, -0.45), names[i])
-	_add_plant(world_root, Vector3(-6.2, 0, -4.4))
-	_add_plant(world_root, Vector3(6.2, 0, -4.4))
+	_add_plant(world_root, Vector3(-4.8, 0, -3.8))
+	_add_plant(world_root, Vector3(4.8, 0, -3.8))
 	_add_npc(world_root, "이 주무관", Vector3(0.0, 0.02, 2.2), Color("#55796a"))
 
 
 func _add_wall_sign(text: String) -> void:
-	_add_box(world_root, "Room sign", Vector3(0, 3.34, -6.72), Vector3(4.8, 0.52, 0.06), Color("#344c4d"))
+	_add_box(world_root, "Room sign", Vector3(0, 3.34, -4.98), Vector3(4.2, 0.52, 0.06), Color("#344c4d"))
 	var label := Label3D.new()
 	label.text = text
-	label.font_size = 26
+	label.font_size = 20
 	label.modulate = Color("#f1ecdf")
-	label.position = Vector3(0, 3.17, -6.66)
-	label.pixel_size = 0.007
+	label.position = Vector3(0, 3.17, -4.92)
+	label.pixel_size = 0.009
 	label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	world_root.add_child(label)
 
@@ -574,15 +521,15 @@ func _room_hotspot_data(room: String) -> Array[Dictionary]:
 		"city": return [{"id": "spec", "label": "규격서 검토", "position": Vector3(0, 0, -0.25)}]
 		"review": return [{"id": "files", "label": "심사 서류", "position": Vector3(0, 0, -0.35)}]
 		"showroom": return [
-			{"id": "catalog", "label": "한빛 상품 등록", "position": Vector3(-4.3, 0, -0.45)},
+			{"id": "catalog", "label": "한빛 상품 등록", "position": Vector3(-3.25, 0, -0.45)},
 			{"id": "buyer", "label": "상품 비교 · 이 주무관", "position": Vector3(0, 0, 1.2)},
-			{"id": "terminal", "label": "분기 판매 단말", "position": Vector3(4.3, 0, -0.4)},
+			{"id": "terminal", "label": "분기 판매 단말", "position": Vector3(3.25, 0, -0.4)},
 		]
 		_:
 			return [
-				{"id": "notice", "label": "입찰공고", "position": Vector3(-6.2, 0, 1.8)},
+				{"id": "notice", "label": "입찰공고", "position": Vector3(-4.7, 0, 1.55)},
 				{"id": "ledger", "label": "원가 장부", "position": Vector3(-0.95, 0, -0.15)},
-				{"id": "park", "label": "박 실장", "position": Vector3(4.55, 0, -2.5)},
+				{"id": "park", "label": "박 실장", "position": Vector3(4.0, 0, -2.0)},
 				{"id": "terminal", "label": "입찰 단말", "position": Vector3(1.4, 0, 1.2)},
 			]
 
@@ -1068,7 +1015,7 @@ func _start_episode_two() -> void:
 	_set_room("showroom")
 	_write_save()
 	_close_modal()
-	_show_dialog("EPISODE 02 · 종합쇼핑몰", "쇼핑몰 속 전쟁", "한빛퍼니처에 종합쇼핑몰 상품 등록 기회가 왔습니다. EP1에서 납품하지 못한 경우에도 시범 상품을 등록할 수 있다는 교육용 각색입니다.", [{"label": "상품 등록 시작", "id": "close"}])
+	_show_dialog("EPISODE 02 · 종합쇼핑몰", "이번 업무의 목표", "한빛 상품의 가격·납기·디자인을 정하고 경쟁 상품과 비교하세요. 이후 상생세일 참여 여부와 가격 조정이 4분기 매출·이익에 어떤 차이를 만드는지 확인합니다.\n\n진행: 상품 등록 → 구매 비교 → 판매 방식 선택 → 4분기 손익 확인", [{"label": "상품 등록 시작", "id": "close"}])
 
 
 func _show_terms() -> void:
@@ -1171,6 +1118,16 @@ func _build_sidebar() -> void:
 	guide_title.add_theme_color_override("font_color", Color("#46584f"))
 	guide_title.add_theme_font_size_override("font_size", 13)
 	guide_body.add_child(guide_title)
+	var chapter_heading := Label.new()
+	chapter_heading.text = "이번 챕터의 목적"
+	chapter_heading.add_theme_color_override("font_color", ORANGE)
+	chapter_heading.add_theme_font_size_override("font_size", 10)
+	guide_body.add_child(chapter_heading)
+	chapter_goal_text = Label.new()
+	chapter_goal_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	chapter_goal_text.add_theme_color_override("font_color", INK)
+	chapter_goal_text.add_theme_font_size_override("font_size", 12)
+	guide_body.add_child(chapter_goal_text)
 	guide_tip = Label.new()
 	guide_tip.text = "목표에 표시된 자료와 사람을 찾아가 E로 조사하세요."
 	guide_tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1187,6 +1144,7 @@ func _build_sidebar() -> void:
 	guide_body.add_child(guide_detail)
 	var guide_toggle := Button.new()
 	guide_toggle.text = "조작법 자세히 보기  ＋"
+	guide_toggle.name = "GuideToggle"
 	_style_button(guide_toggle, false)
 	guide_toggle.pressed.connect(_toggle_guide)
 	guide_body.add_child(guide_toggle)
@@ -1207,12 +1165,12 @@ func _build_sidebar() -> void:
 	_add_gauge(stack, "리스크", "risk", RED)
 	_add_gauge(stack, "여론", "opinion", NAVY)
 	var flow_header := Label.new()
-	flow_header.text = "조달 업무 흐름"
+	flow_header.text = "챕터 진행 순서"
 	flow_header.add_theme_color_override("font_color", Color("#858b81"))
 	flow_header.add_theme_font_size_override("font_size", 10)
 	stack.add_child(flow_header)
 	flow_text = Label.new()
-	flow_text.text = "① 공고\n② 투찰\n③ 예정가격\n④ 낙찰\n⑤ 심사\n⑥ 계약·납품"
+	flow_text.text = "① 규격 검토\n② 입찰 준비\n③ 투찰·개찰\n④ 심사 결과"
 	flow_text.add_theme_color_override("font_color", Color("#617068"))
 	flow_text.add_theme_font_size_override("font_size", 11)
 	flow_text.add_theme_constant_override("line_spacing", 3)
@@ -1399,9 +1357,8 @@ func _toggle_guide() -> void:
 	guide_open = not guide_open
 	var details := guide_body.find_child("GuideDetails", true, false) as Label
 	if details: details.visible = guide_open
-	if guide_body.get_child_count() > 3:
-		var button := guide_body.get_child(3) as Button
-		button.text = "조작법 접기  −" if guide_open else "조작법 자세히 보기  ＋"
+	var button := guide_body.find_child("GuideToggle", true, false) as Button
+	if button: button.text = "조작법 접기  −" if guide_open else "조작법 자세히 보기  ＋"
 
 
 func _show_title() -> void:
@@ -1420,7 +1377,7 @@ func _start_new_game() -> void:
 	title_layer.visible = false
 	game_active = true
 	_write_save()
-	_show_dialog("프롤로그 · 한빛퍼니처", "금고 속 3,000만 원", "장례식 뒤 회사 금고를 열었습니다. 잔고 3,000만 원, 미지급 대금이 쌓여 있습니다.\n\n박 실장: “민간 거래처는 다 끊겼습니다. 이제 나라장터밖에 없어요.”\n\n첫 입찰은 수요기관의 규격 작성에서 시작됩니다. 이 주무관의 업무를 살펴보세요.", [{"label": "현장으로", "id": "close"}])
+	_show_dialog("EPISODE 01 · 구매 규격 검토", "이번 업무의 목표", "당신은 ○○시청 구매 담당자입니다. 회의용 탁자 구매 규격을 정한 뒤, 다음 장에서 업체가 공고·원가를 살펴 투찰하고 심사받는 과정을 경험합니다.\n\n목표: 특정 제품에 유리하지 않은 성능 중심의 구매 조건을 정하세요.\n진행: 규격 검토 → 입찰 준비 → 투찰·개찰 → 심사 결과", [{"label": "규격 검토 시작", "id": "close"}])
 
 
 func _continue_game() -> void:
@@ -1439,7 +1396,7 @@ func _continue_game() -> void:
 	elif state.step == "result" and not bid_result.is_empty():
 		_show_bid_result()
 	elif state.step == "office":
-		_show_dialog("이어하기 · 한빛퍼니처", "입찰 준비를 계속합니다", "자료 확인 %d/3. 조사한 내용은 저장되어 있습니다." % found_docs.size(), [{"label": "사무실로 돌아가기", "id": "close"}])
+		_show_dialog("이어하기 · EP01", "입찰 준비를 계속합니다", "필수 자료 %d/2를 확인했습니다. 조사한 내용은 저장되어 있습니다." % mini(found_docs.size(), 2), [{"label": "사무실로 돌아가기", "id": "close"}])
 	elif state.episode == 2:
 		_show_dialog("이어하기 · EP2", "쇼핑몰 업무를 계속합니다", "현재 %d/4분기 진행했습니다." % quarter_index, [{"label": "계속", "id": "resume_ep2"}])
 	else:
@@ -1544,6 +1501,8 @@ func _update_hud() -> void:
 	objective_text.text = _objective()
 	if guide_tip:
 		guide_tip.text = _guide_context()
+	if chapter_goal_text:
+		chapter_goal_text.text = _chapter_goal()
 	if actor_text:
 		var display_name := "나라미 · 한 대표 시점" if str(state.get("pov", "한 대표")) == "한 대표" else str(state.get("pov", "한 대표"))
 		actor_text.text = "%s  ·  %s" % [display_name, _affiliation()]
@@ -1551,10 +1510,25 @@ func _update_hud() -> void:
 	_update_gauge("rep", int(state.get("rep", 0)), "%d/100" % int(state.get("rep", 0)), 100.0, GREEN)
 	_update_gauge("risk", int(state.get("risk", 0)), "%d/100" % int(state.get("risk", 0)), 100.0, RED)
 	_update_gauge("opinion", int(state.get("opinion", 50)), "%d/100" % int(state.get("opinion", 50)), 100.0, NAVY)
-	var flow := "① 공고\n② 투찰\n③ 예정가격\n④ 낙찰\n⑤ 심사\n⑥ 계약·납품"
-	if state.episode == 1 and state.step in ["bid", "result", "review"]:
-		flow = "✓ 공고\n%s 투찰\n%s 예정가격\n%s 낙찰\n%s 심사\n⑥ 계약·납품" % ["●" if state.step == "bid" else "✓", "●" if state.step == "result" else ("✓" if state.step == "review" else "○"), "●" if state.step == "review" else "○", "●" if state.step == "review" else "○"]
-	if flow_text: flow_text.text = flow
+	if flow_text: flow_text.text = _chapter_route()
+
+
+func _chapter_goal() -> String:
+	if state.episode == 2:
+		return "상품의 가격·납기·판매촉진을 결정하고, 4분기 손익을 비교합니다."
+	return "공정한 구매 조건부터 입찰과 심사까지, 조달 한 건의 흐름을 경험합니다."
+
+
+func _chapter_route() -> String:
+	if state.episode == 2:
+		var registered := not current_product.is_empty()
+		var quarters := "● 4분기 판매 (%d/4)" % quarter_index if state.step == "sales" else ("✓ 4분기 판매" if state.step == "ep2done" else "○ 4분기 판매")
+		return "%s 상품 등록\n%s 상품 비교\n%s 판매 방식 선택\n%s" % ["✓" if registered else "●", "✓" if buyer_favor else ("●" if registered else "○"), "✓" if state.step == "sales" or state.step == "ep2done" else "●" if buyer_favor else "○", quarters]
+	var spec_done: bool = state.step != "city"
+	var docs_done := found_docs.size() >= 2
+	var bid_done: bool = state.step in ["result", "review", "ep1done"]
+	var review_done: bool = state.step == "ep1done"
+	return "%s 규격 검토\n%s 공고·원가 확인 (%d/2)\n%s 투찰·개찰\n%s 심사 결과" % ["✓" if spec_done else "●", "✓" if docs_done else "●" if spec_done else "○", mini(found_docs.size(), 2), "✓" if bid_done else "●" if docs_done else "○", "✓" if review_done else "●" if state.step == "review" else "○"]
 
 
 func _update_gauge(key: String, value: int, text: String, max_value: float, _color: Color) -> void:
@@ -1570,7 +1544,7 @@ func _objective() -> String:
 	if state.episode == 1:
 		match state.step:
 			"city": return "구매 규격을 검토하고 경쟁이 가능한 조건을 정하세요."
-			"office": return "입찰 자료를 확인하세요. (%d/3)" % found_docs.size()
+			"office": return "공고문과 원가 장부를 확인하세요. (%d/2 필수)" % mini(found_docs.size(), 2)
 			"bid": return "복수예비가격을 고르고 투찰 금액을 입력하세요."
 			"result": return "개찰 결과를 확인하세요."
 			"review": return "적격심사 서류를 확인하고 제출 방식을 선택하세요."
@@ -1585,7 +1559,16 @@ func _objective() -> String:
 
 func _guide_context() -> String:
 	if not nearby_target.is_empty(): return "E를 눌러 ‘%s’와 상호작용하세요." % nearby_target.label
-	return "달이: " + _objective()
+	if state.episode == 2:
+		if current_product.is_empty(): return "달이: 한빛 상품 등록대에서 가격·납기·디자인을 정해요."
+		if state.step == "sales": return "달이: 판매 단말에서 분기별 실적을 확인해요."
+		return "달이: 구매 담당자와 상품을 비교한 뒤 판매 단말로 가요."
+	match str(state.get("step", "")):
+		"city": return "달이: 중앙 책상으로 가서 구매 규격 검토를 시작해요."
+		"office": return "달이: 공고문과 원가 장부를 확인하면 입찰 단말이 열려요."
+		"bid": return "달이: 예비가격 두 개를 고른 뒤 투찰 금액을 입력해요."
+		"review": return "달이: 실적 서류를 사실에 맞게 확인하고 제출해요."
+	return "달이: 아래 오늘의 업무를 확인하고 가까운 표시로 이동해요."
 
 
 func _affiliation() -> String:
