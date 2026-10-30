@@ -89,10 +89,6 @@ func _process(delta: float) -> void:
 		var companion_target := player.global_position + Vector3(1.75, 0.0, 0.05)
 		dali.global_position = dali.global_position.lerp(companion_target, minf(delta * 2.5, 1.0))
 		dali.set_moving(Vector2(player.velocity.x, player.velocity.z).length() > 0.15)
-	if is_instance_valid(camera) and is_instance_valid(player):
-		var wanted := player.global_position + Vector3(1.5, 3.0, 6.1)
-		camera.global_position = camera.global_position.lerp(wanted, minf(delta * 4.2, 1.0))
-		camera.look_at(player.global_position + Vector3(1.15, 0.95, -0.45), Vector3.UP)
 
 
 func _physics_process(_delta: float) -> void:
@@ -160,7 +156,7 @@ func _build_world() -> void:
 	environment.background_color = Color("#e8f0eb")
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color("#fff4e9")
-	environment.ambient_light_energy = 0.88
+	environment.ambient_light_energy = 0.55
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	environment.ssr_enabled = false
 	environment.glow_enabled = false
@@ -173,13 +169,14 @@ func _build_player() -> void:
 	player.name = "Player"
 	var collision := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.28
-	capsule.height = 1.45
+	capsule.radius = 0.23
+	capsule.height = 1.1
 	collision.shape = capsule
-	collision.position.y = 0.74
+	collision.position.y = 0.56
 	player.add_child(collision)
 	player_visual = MascotActor.create_nareumi()
 	player_visual.name = "나라미"
+	player_visual.scale = Vector3.ONE * 0.82
 	player.add_child(player_visual)
 	_build_dali()
 	add_child(player)
@@ -187,12 +184,13 @@ func _build_player() -> void:
 
 func _build_camera() -> void:
 	camera = Camera3D.new()
-	camera.name = "FollowCamera"
+	camera.name = "FixedDioramaCamera"
 	camera.current = true
-	camera.fov = 47.0
-	camera.position = Vector3(1.5, 3.0, 6.1)
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = 13.0
+	camera.position = Vector3(2.2, 15.0, 11.0)
 	add_child(camera)
-	camera.look_at(Vector3(1.15, 0.95, -0.45), Vector3.UP)
+	camera.look_at(Vector3(2.2, 0.0, 0.0), Vector3.UP)
 
 
 func _mat(color: Color, roughness: float = 0.8, metallic: float = 0.0) -> StandardMaterial3D:
@@ -257,6 +255,7 @@ func _build_dali() -> void:
 	dali = MascotActor.create_dali()
 	dali.name = "Dali_Guide_Mascot"
 	dali.position = Vector3(1.75, 0, 5.05)
+	dali.scale = Vector3.ONE * 0.82
 	add_child(dali)
 
 
@@ -328,20 +327,15 @@ func _set_room(room: String) -> void:
 	if is_instance_valid(player):
 		player.global_position = Vector3(0, 0.02, 3.65 if room == "office" else 3.8)
 		player.velocity = Vector3.ZERO
-		# Keep the title-screen diorama framed around the player before gameplay
-		# starts; the follow camera intentionally pauses while a modal is open.
-		if is_instance_valid(camera):
-			camera.global_position = player.global_position + Vector3(1.5, 3.0, 6.1)
-			camera.look_at(player.global_position + Vector3(1.15, 0.95, -0.45), Vector3.UP)
 	_update_hud()
 
 
 func _room_palette(room: String) -> Dictionary:
 	match room:
-		"city": return {"wall": Color("#eff5ef"), "floor": Color("#dfe6dc"), "wood": Color("#a5b8a8"), "accent": Color("#82a99d")}
-		"review": return {"wall": Color("#eef5f6"), "floor": Color("#dbe8e8"), "wood": Color("#87a9ad"), "accent": Color("#8fc4cf")}
-		"showroom": return {"wall": Color("#fbf4e8"), "floor": Color("#eee1cb"), "wood": Color("#dfa578"), "accent": Color("#9bbab0")}
-		_: return {"wall": Color("#f6f1e8"), "floor": Color("#e8dfd0"), "wood": Color("#d5b995"), "accent": Color("#8da8a0")}
+		"city": return {"wall": Color("#e6eee6"), "floor": Color("#c8d6cc"), "wood": Color("#a5b8a8"), "accent": Color("#82a99d")}
+		"review": return {"wall": Color("#e5edef"), "floor": Color("#bfd0d2"), "wood": Color("#87a9ad"), "accent": Color("#8fc4cf")}
+		"showroom": return {"wall": Color("#f3eadb"), "floor": Color("#dfceb2"), "wood": Color("#dfa578"), "accent": Color("#9bbab0")}
+		_: return {"wall": Color("#eee5d6"), "floor": Color("#d2c4ac"), "wood": Color("#d5b995"), "accent": Color("#8da8a0")}
 
 
 func _build_room_shell(palette: Dictionary) -> void:
@@ -352,20 +346,18 @@ func _build_room_shell(palette: Dictionary) -> void:
 	_add_box(world_root, "Back wall", Vector3(0, 2, -5.15), Vector3(12.2, 4, 0.22), palette.wall, true)
 	_add_box(world_root, "Left wall", Vector3(-6.1, 2, 0), Vector3(0.22, 4, 10.2), palette.wall, true)
 	_add_box(world_root, "Right wall", Vector3(6.1, 2, 0), Vector3(0.22, 4, 10.2), palette.wall, true)
-	_add_box(world_root, "Ceiling", Vector3(0, 4.08, 0), Vector3(12.2, 0.16, 10.2), Color("#e9e1d1"))
+	# Leave the top open for the fixed overview camera; a roof would hide the
+	# entire room in the requested overhead composition.
 	for x in [-3.65, -1.35]:
 		_add_box(world_root, "Window", Vector3(x, 2.62, -4.98), Vector3(1.9, 1.5, 0.045), Color("#c8edf1"), false, 0.24)
 		_add_box(world_root, "Window frame vertical", Vector3(x, 2.62, -4.93), Vector3(0.06, 1.6, 0.08), Color("#fffaf1"))
 		_add_box(world_root, "Window frame horizontal", Vector3(x, 2.62, -4.92), Vector3(1.96, 0.06, 0.08), Color("#fffaf1"))
 		_add_box(world_root, "Window mullion", Vector3(x + 0.02, 2.62, -4.88), Vector3(0.035, 1.42, 0.06), Color("#fffaf1"))
 	_add_box(world_root, "Picture rail", Vector3(0, 3.45, -4.99), Vector3(11.9, 0.1, 0.1), Color("#b6c6bc"))
-	for x in [-3.75, 0.0, 3.75]:
-		_add_box(world_root, "Ceiling beam", Vector3(x, 3.9, 0), Vector3(0.09, 0.12, 9.6), Color("#e1d6c4"))
-		_add_box(world_root, "Pendant shade", Vector3(x, 3.58, -0.4), Vector3(0.5, 0.08, 0.48), Color("#fff0ca"))
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-43, -28, 0)
 	sun.light_color = Color("#fff0d4")
-	sun.light_energy = 0.88
+	sun.light_energy = 0.68
 	sun.shadow_enabled = true
 	sun.light_size = 2.2
 	sun.directional_shadow_max_distance = 12.0
@@ -373,7 +365,7 @@ func _build_room_shell(palette: Dictionary) -> void:
 	var ambient := OmniLight3D.new()
 	ambient.position = Vector3(0, 3.1, -0.5)
 	ambient.light_color = Color("#fff0d4")
-	ambient.light_energy = 0.38
+	ambient.light_energy = 0.2
 	ambient.omni_range = 9.0
 	world_root.add_child(ambient)
 
