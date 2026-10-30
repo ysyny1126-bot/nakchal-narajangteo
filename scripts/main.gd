@@ -181,6 +181,31 @@ func _build_player() -> void:
 	body.position.y = 0.76
 	body.material_override = _mat(Color("#bd6340"), 0.74)
 	player_visual.add_child(body)
+	for side in [-1.0, 1.0]:
+		var arm := MeshInstance3D.new()
+		var arm_mesh := CapsuleMesh.new()
+		arm_mesh.radius = 0.105
+		arm_mesh.height = 0.68
+		arm.mesh = arm_mesh
+		arm.position = Vector3(side * 0.34, 0.76, 0)
+		arm.rotation_degrees.z = side * -8.0
+		arm.material_override = _mat(Color("#bd6340"), 0.74)
+		player_visual.add_child(arm)
+		var leg := MeshInstance3D.new()
+		var leg_mesh := CapsuleMesh.new()
+		leg_mesh.radius = 0.11
+		leg_mesh.height = 0.58
+		leg.mesh = leg_mesh
+		leg.position = Vector3(side * 0.14, 0.22, 0)
+		leg.material_override = _mat(Color("#3c4d50"), 0.9)
+		player_visual.add_child(leg)
+		var shoe := MeshInstance3D.new()
+		var shoe_mesh := BoxMesh.new()
+		shoe_mesh.size = Vector3(0.22, 0.11, 0.36)
+		shoe.mesh = shoe_mesh
+		shoe.position = Vector3(side * 0.14, 0.055, -0.055)
+		shoe.material_override = _mat(Color("#403b35"), 0.9)
+		player_visual.add_child(shoe)
 	var head := MeshInstance3D.new()
 	var head_mesh := SphereMesh.new()
 	head_mesh.radius = 0.22
@@ -258,6 +283,54 @@ func _add_sphere(parent: Node3D, position: Vector3, radius: float, color: Color)
 	sphere.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	parent.add_child(sphere)
 	return sphere
+
+
+func _add_npc(parent: Node3D, actor_name: String, position: Vector3, jacket: Color) -> void:
+	var npc := Node3D.new()
+	npc.name = "NPC_" + actor_name.replace(" ", "_")
+	npc.position = position
+	parent.add_child(npc)
+	var torso := MeshInstance3D.new()
+	var torso_mesh := CapsuleMesh.new()
+	torso_mesh.radius = 0.27
+	torso_mesh.height = 1.0
+	torso.mesh = torso_mesh
+	torso.position.y = 0.72
+	torso.material_override = _mat(jacket, 0.76)
+	npc.add_child(torso)
+	var head := MeshInstance3D.new()
+	var head_mesh := SphereMesh.new()
+	head_mesh.radius = 0.21
+	head.mesh = head_mesh
+	head.position.y = 1.39
+	head.material_override = _mat(Color("#e4b894"), 0.84)
+	npc.add_child(head)
+	var hair := MeshInstance3D.new()
+	var hair_mesh := SphereMesh.new()
+	hair_mesh.radius = 0.22
+	hair_mesh.height = 0.17
+	hair.mesh = hair_mesh
+	hair.position.y = 1.52
+	hair.material_override = _mat(Color("#39352f"), 0.92)
+	npc.add_child(hair)
+	for side in [-1.0, 1.0]:
+		var arm := MeshInstance3D.new()
+		var arm_mesh := CapsuleMesh.new()
+		arm_mesh.radius = 0.095
+		arm_mesh.height = 0.62
+		arm.mesh = arm_mesh
+		arm.position = Vector3(side * 0.32, 0.71, 0)
+		arm.rotation_degrees.z = side * -9.0
+		arm.material_override = _mat(jacket, 0.8)
+		npc.add_child(arm)
+	var legs := MeshInstance3D.new()
+	var legs_mesh := CapsuleMesh.new()
+	legs_mesh.radius = 0.12
+	legs_mesh.height = 0.55
+	legs.mesh = legs_mesh
+	legs.position.y = 0.2
+	legs.material_override = _mat(Color("#3c4b4b"), 0.9)
+	npc.add_child(legs)
 
 
 func _set_room(room: String) -> void:
@@ -400,6 +473,7 @@ func _build_office() -> void:
 	stem.material_override = _mat(Color("#a98c60"), 0.35, 0.2)
 	world_root.add_child(stem)
 	_add_sphere(world_root, Vector3(-2.0, 1.45, -0.25), 0.14, Color("#e2c78c"))
+	_add_npc(world_root, "박 실장", Vector3(5.6, 0.02, -1.2), Color("#52685d"))
 
 
 func _build_city_room() -> void:
@@ -410,6 +484,7 @@ func _build_city_room() -> void:
 	_add_plant(world_root, Vector3(6.4, 0, 4.2))
 	_add_notice_board(world_root, Vector3(-5.7, 2.2, -6.65), "구매 규격")
 	_add_computer(world_root, Vector3(1.0, 0, -0.55))
+	_add_npc(world_root, "이 주무관", Vector3(2.7, 0.02, 1.1), Color("#55796a"))
 
 
 func _build_review_room() -> void:
@@ -420,6 +495,7 @@ func _build_review_room() -> void:
 	_add_cabinet(world_root, Vector3(6.15, 0, -2.0), Color("#657a78"))
 	_add_notice_board(world_root, Vector3(-5.6, 2.2, -6.65), "심사 접수")
 	_add_computer(world_root, Vector3(0.1, 0, -0.52))
+	_add_npc(world_root, "윤서진", Vector3(2.65, 0.02, 1.2), Color("#315768"))
 
 
 func _build_showroom() -> void:
@@ -439,6 +515,7 @@ func _build_showroom() -> void:
 			_add_notice_board(world_root, Vector3(x, 1.75, -0.45), names[i])
 	_add_plant(world_root, Vector3(-6.2, 0, -4.4))
 	_add_plant(world_root, Vector3(6.2, 0, -4.4))
+	_add_npc(world_root, "이 주무관", Vector3(0.0, 0.02, 2.2), Color("#55796a"))
 
 
 func _add_wall_sign(text: String) -> void:
