@@ -30,6 +30,7 @@ var state := {}
 var world_root: Node3D
 var player: CharacterBody3D
 var player_visual: Node3D
+var dali: Node3D
 var camera: Camera3D
 var canvas: CanvasLayer
 var ui_root: Control
@@ -83,6 +84,10 @@ func _process(delta: float) -> void:
 	_update_hud()
 	if is_instance_valid(player_visual):
 		player_visual.position.y = sin(Time.get_ticks_msec() * 0.006) * 0.018
+	if is_instance_valid(dali) and is_instance_valid(player) and game_active:
+		var companion_target := player.global_position + Vector3(0.9, 0.0, 0.72)
+		dali.global_position = dali.global_position.lerp(companion_target, minf(delta * 2.5, 1.0))
+		dali.position.y = sin(Time.get_ticks_msec() * 0.0038 + 1.4) * 0.035
 	if is_instance_valid(camera) and is_instance_valid(player):
 		var wanted := player.global_position + Vector3(0.2, 3.35, 6.3)
 		camera.global_position = camera.global_position.lerp(wanted, minf(delta * 4.2, 1.0))
@@ -151,10 +156,10 @@ func _build_world() -> void:
 	var environment_node := WorldEnvironment.new()
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color("#d8d1c2")
+	environment.background_color = Color("#f8f7f2")
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color("#efe3ca")
-	environment.ambient_light_energy = 0.8
+	environment.ambient_light_color = Color("#fff4e9")
+	environment.ambient_light_energy = 1.05
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	environment_node.environment = environment
 	add_child(environment_node)
@@ -173,61 +178,33 @@ func _build_player() -> void:
 	player_visual = Node3D.new()
 	player_visual.name = "CharacterArt"
 	player.add_child(player_visual)
-	var body := MeshInstance3D.new()
-	var body_mesh := CapsuleMesh.new()
-	body_mesh.radius = 0.29
-	body_mesh.height = 1.12
-	body.mesh = body_mesh
-	body.position.y = 0.76
-	body.material_override = _mat(Color("#bd6340"), 0.74)
-	player_visual.add_child(body)
+	_add_ellipsoid(player_visual, Vector3(0, 0.72, 0), Vector3(0.52, 0.63, 0.44), Color("#fffdfa"), 0.56)
+	_add_ellipsoid(player_visual, Vector3(0, 1.48, 0), Vector3(0.75, 0.72, 0.64), Color("#fffefa"), 0.45)
+	# Nareumi's broad, pale-blue aviator visor and glossy eyes.
+	_add_ellipsoid(player_visual, Vector3(0, 1.49, 0.49), Vector3(0.82, 0.42, 0.19), Color("#a9cbd0"), 0.34)
+	_add_ellipsoid(player_visual, Vector3(0, 1.5, 0.555), Vector3(0.77, 0.37, 0.17), Color("#c9edf2"), 0.2)
 	for side in [-1.0, 1.0]:
-		var arm := MeshInstance3D.new()
-		var arm_mesh := CapsuleMesh.new()
-		arm_mesh.radius = 0.105
-		arm_mesh.height = 0.68
-		arm.mesh = arm_mesh
-		arm.position = Vector3(side * 0.34, 0.76, 0)
-		arm.rotation_degrees.z = side * -8.0
-		arm.material_override = _mat(Color("#bd6340"), 0.74)
-		player_visual.add_child(arm)
-		var leg := MeshInstance3D.new()
-		var leg_mesh := CapsuleMesh.new()
-		leg_mesh.radius = 0.11
-		leg_mesh.height = 0.58
-		leg.mesh = leg_mesh
-		leg.position = Vector3(side * 0.14, 0.22, 0)
-		leg.material_override = _mat(Color("#3c4d50"), 0.9)
-		player_visual.add_child(leg)
-		var shoe := MeshInstance3D.new()
-		var shoe_mesh := BoxMesh.new()
-		shoe_mesh.size = Vector3(0.22, 0.11, 0.36)
-		shoe.mesh = shoe_mesh
-		shoe.position = Vector3(side * 0.14, 0.055, -0.055)
-		shoe.material_override = _mat(Color("#403b35"), 0.9)
-		player_visual.add_child(shoe)
-	var head := MeshInstance3D.new()
-	var head_mesh := SphereMesh.new()
-	head_mesh.radius = 0.22
-	head.mesh = head_mesh
-	head.position.y = 1.48
-	head.material_override = _mat(Color("#e7bd98"), 0.83)
-	player_visual.add_child(head)
-	var hair := MeshInstance3D.new()
-	var hair_mesh := SphereMesh.new()
-	hair_mesh.radius = 0.225
-	hair_mesh.height = 0.18
-	hair.mesh = hair_mesh
-	hair.position.y = 1.62
-	hair.material_override = _mat(Color("#3f3731"), 0.95)
-	player_visual.add_child(hair)
-	var tie := MeshInstance3D.new()
-	var tie_mesh := BoxMesh.new()
-	tie_mesh.size = Vector3(0.09, 0.32, 0.035)
-	tie.mesh = tie_mesh
-	tie.position = Vector3(0, 0.92, -0.275)
-	tie.material_override = _mat(Color("#d0ad67"), 0.5)
-	player_visual.add_child(tie)
+		_add_ellipsoid(player_visual, Vector3(side * 0.29, 1.48, 0.71), Vector3(0.12, 0.145, 0.07), Color("#26313b"), 0.16)
+		_add_ellipsoid(player_visual, Vector3(side * 0.32 - 0.035, 1.54, 0.77), Vector3(0.035, 0.04, 0.022), Color("#ffffff"), 0.12)
+		_add_ellipsoid(player_visual, Vector3(side * 0.61, 0.72, 0), Vector3(0.34, 0.2, 0.31), Color("#f5f3ed"), 0.56)
+		_add_ellipsoid(player_visual, Vector3(side * 0.78, 0.59, 0.05), Vector3(0.22, 0.16, 0.2), Color("#333b3e"), 0.52)
+		_add_ellipsoid(player_visual, Vector3(side * 0.2, 0.15, 0.13), Vector3(0.22, 0.15, 0.29), Color("#e7a14a"), 0.4)
+		_add_ellipsoid(player_visual, Vector3(side * 0.2, 0.1, 0.32), Vector3(0.13, 0.12, 0.16), Color("#edae55"), 0.4)
+	_add_ellipsoid(player_visual, Vector3(0, 1.25, 0.69), Vector3(0.2, 0.13, 0.19), Color("#e9a147"), 0.37)
+	_add_ellipsoid(player_visual, Vector3(0, 1.205, 0.76), Vector3(0.12, 0.035, 0.075), Color("#b87839"), 0.45)
+	var scarf := MeshInstance3D.new()
+	var scarf_mesh := TorusMesh.new()
+	scarf_mesh.inner_radius = 0.36
+	scarf_mesh.outer_radius = 0.52
+	scarf.mesh = scarf_mesh
+	scarf.position = Vector3(0, 1.02, 0)
+	scarf.scale = Vector3(1.0, 0.42, 0.88)
+	scarf.material_override = _mat(Color("#c84a46"), 0.36)
+	player_visual.add_child(scarf)
+	_add_ellipsoid(player_visual, Vector3(0.47, 0.99, -0.1), Vector3(0.33, 0.105, 0.13), Color("#ca4d49"), 0.4)
+	_add_ellipsoid(player_visual, Vector3(0.62, 0.93, -0.16), Vector3(0.28, 0.1, 0.12), Color("#bb3f3e"), 0.4)
+	_add_ellipsoid(player_visual, Vector3(0, 0.47, -0.44), Vector3(0.16, 0.3, 0.24), Color("#30383b"), 0.68)
+	_build_dali()
 	add_child(player)
 
 
@@ -283,6 +260,60 @@ func _add_sphere(parent: Node3D, position: Vector3, radius: float, color: Color)
 	sphere.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	parent.add_child(sphere)
 	return sphere
+
+
+func _add_ellipsoid(parent: Node3D, position: Vector3, dimensions: Vector3, color: Color, roughness: float = 0.55) -> MeshInstance3D:
+	var shape := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 1.0
+	sphere.height = 2.0
+	shape.mesh = sphere
+	shape.position = position
+	shape.scale = dimensions
+	shape.material_override = _mat(color, roughness)
+	shape.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	parent.add_child(shape)
+	return shape
+
+
+func _build_dali() -> void:
+	dali = Node3D.new()
+	dali.name = "Dali_Guide_Mascot"
+	dali.position = Vector3(0.9, 0, 5.5)
+	add_child(dali)
+	_add_ellipsoid(dali, Vector3(0, 0.56, 0), Vector3(0.46, 0.53, 0.38), Color("#f09b45"), 0.44)
+	_add_ellipsoid(dali, Vector3(0, 1.28, 0), Vector3(0.69, 0.66, 0.58), Color("#f2a147"), 0.4)
+	# Round ears with pale inner fur.
+	for side in [-1.0, 1.0]:
+		_add_ellipsoid(dali, Vector3(side * 0.49, 1.78, -0.02), Vector3(0.25, 0.27, 0.2), Color("#e9913d"), 0.4)
+		_add_ellipsoid(dali, Vector3(side * 0.49, 1.78, 0.15), Vector3(0.135, 0.15, 0.075), Color("#f7e5d4"), 0.62)
+		_add_ellipsoid(dali, Vector3(side * 0.235, 1.28, 0.5), Vector3(0.105, 0.12, 0.075), Color("#292e39"), 0.16)
+		_add_ellipsoid(dali, Vector3(side * 0.255 - 0.03, 1.33, 0.56), Vector3(0.034, 0.037, 0.022), Color("#ffffff"), 0.12)
+		_add_ellipsoid(dali, Vector3(side * 0.34, 0.78, -0.26), Vector3(0.13, 0.43, 0.085), Color("#935537"), 0.68)
+		_add_ellipsoid(dali, Vector3(side * 0.2, 0.13, 0.1), Vector3(0.18, 0.13, 0.25), Color("#d98236"), 0.48)
+	# White face, belly, and a tiny orange nose.
+	_add_ellipsoid(dali, Vector3(0, 1.03, 0.48), Vector3(0.44, 0.3, 0.22), Color("#fffaf4"), 0.58)
+	_add_ellipsoid(dali, Vector3(-0.145, 1.12, 0.55), Vector3(0.21, 0.15, 0.14), Color("#fffdf8"), 0.52)
+	_add_ellipsoid(dali, Vector3(0.145, 1.12, 0.55), Vector3(0.21, 0.15, 0.14), Color("#fffdf8"), 0.52)
+	_add_ellipsoid(dali, Vector3(0, 1.08, 0.72), Vector3(0.075, 0.055, 0.06), Color("#e87e39"), 0.3)
+	_add_ellipsoid(dali, Vector3(0, 0.58, 0.34), Vector3(0.3, 0.35, 0.11), Color("#fffaf3"), 0.58)
+	# Three soft forehead stripes and a curled plume tail.
+	for i in range(3):
+		var stripe := MeshInstance3D.new()
+		var stripe_mesh := CapsuleMesh.new()
+		stripe_mesh.radius = 0.07
+		stripe_mesh.height = 0.52
+		stripe.mesh = stripe_mesh
+		stripe.position = Vector3((i - 1) * 0.19, 1.78, 0.43)
+		stripe.material_override = _mat(Color("#d97b3d"), 0.56)
+		dali.add_child(stripe)
+	_add_ellipsoid(dali, Vector3(0.54, 0.35, -0.23), Vector3(0.32, 0.29, 0.3), Color("#ee9a43"), 0.5)
+	_add_ellipsoid(dali, Vector3(0.72, 0.54, -0.3), Vector3(0.25, 0.23, 0.24), Color("#fff9f2"), 0.59)
+	# A gentle curved smile made from tiny glossy segments.
+	for i in range(5):
+		var x := (float(i) - 2.0) * 0.055
+		var y := 0.985 + (0.035 if i == 2 else (0.01 if i == 1 or i == 3 else -0.02))
+		_add_ellipsoid(dali, Vector3(x, y, 0.675), Vector3(0.045, 0.022, 0.022), Color("#40353a"), 0.24)
 
 
 func _add_npc(parent: Node3D, actor_name: String, position: Vector3, jacket: Color) -> void:
@@ -358,47 +389,47 @@ func _set_room(room: String) -> void:
 
 func _room_palette(room: String) -> Dictionary:
 	match room:
-		"city": return {"wall": Color("#d5ded3"), "floor": Color("#aaaF9f"), "wood": Color("#65776b"), "accent": Color("#718676")}
-		"review": return {"wall": Color("#cad6d6"), "floor": Color("#98aaa9"), "wood": Color("#536a69"), "accent": Color("#315768")}
-		"showroom": return {"wall": Color("#e8ddca"), "floor": Color("#c9b38d"), "wood": Color("#b87954"), "accent": Color("#789080")}
-		_: return {"wall": Color("#ded3bd"), "floor": Color("#b59e7c"), "wood": Color("#76593e"), "accent": Color("#657360")}
+		"city": return {"wall": Color("#eff5ef"), "floor": Color("#dfe6dc"), "wood": Color("#a5b8a8"), "accent": Color("#82a99d")}
+		"review": return {"wall": Color("#eef5f6"), "floor": Color("#dbe8e8"), "wood": Color("#87a9ad"), "accent": Color("#8fc4cf")}
+		"showroom": return {"wall": Color("#fbf4e8"), "floor": Color("#eee1cb"), "wood": Color("#dfa578"), "accent": Color("#9bbab0")}
+		_: return {"wall": Color("#f6f1e8"), "floor": Color("#e8dfd0"), "wood": Color("#d5b995"), "accent": Color("#8da8a0")}
 
 
 func _build_room_shell(palette: Dictionary) -> void:
 	var floor := _add_box(world_root, "Oak floor", Vector3(0, -0.16, 0), Vector3(16, 0.32, 14), palette.floor, true)
 	floor.material_override.roughness = 0.84
 	for row in range(11):
-		_add_box(world_root, "Floor seam", Vector3(0, 0.005, -6.25 + row * 1.25), Vector3(15.8, 0.012, 0.018), Color("#927e60"), false)
+		_add_box(world_root, "Floor seam", Vector3(0, 0.005, -6.25 + row * 1.25), Vector3(15.8, 0.012, 0.018), Color("#d1c7b8"), false)
 	_add_box(world_root, "Back wall", Vector3(0, 2, -7), Vector3(16, 4, 0.22), palette.wall, true)
 	_add_box(world_root, "Left wall", Vector3(-8, 2, 0), Vector3(0.22, 4, 14), palette.wall, true)
 	_add_box(world_root, "Right wall", Vector3(8, 2, 0), Vector3(0.22, 4, 14), palette.wall, true)
 	_add_box(world_root, "Ceiling", Vector3(0, 4.08, 0), Vector3(16, 0.16, 14), Color("#e9e1d1"))
 	for x in [-5.0, -2.3]:
-		_add_box(world_root, "Window", Vector3(x, 2.62, -6.82), Vector3(2.25, 1.55, 0.045), Color("#8ca8aa"), false, 0.28)
-		_add_box(world_root, "Window frame vertical", Vector3(x, 2.62, -6.77), Vector3(0.06, 1.64, 0.08), Color("#f2ead8"))
-		_add_box(world_root, "Window frame horizontal", Vector3(x, 2.62, -6.76), Vector3(2.3, 0.06, 0.08), Color("#f2ead8"))
-		_add_box(world_root, "Window mullion", Vector3(x + 0.02, 2.62, -6.72), Vector3(0.035, 1.45, 0.06), Color("#f4ecdc"))
-	_add_box(world_root, "Picture rail", Vector3(0, 3.45, -6.83), Vector3(15.75, 0.1, 0.1), Color("#69776c"))
+		_add_box(world_root, "Window", Vector3(x, 2.62, -6.82), Vector3(2.25, 1.55, 0.045), Color("#c8edf1"), false, 0.24)
+		_add_box(world_root, "Window frame vertical", Vector3(x, 2.62, -6.77), Vector3(0.06, 1.64, 0.08), Color("#fffaf1"))
+		_add_box(world_root, "Window frame horizontal", Vector3(x, 2.62, -6.76), Vector3(2.3, 0.06, 0.08), Color("#fffaf1"))
+		_add_box(world_root, "Window mullion", Vector3(x + 0.02, 2.62, -6.72), Vector3(0.035, 1.45, 0.06), Color("#fffaf1"))
+	_add_box(world_root, "Picture rail", Vector3(0, 3.45, -6.83), Vector3(15.75, 0.1, 0.1), Color("#b6c6bc"))
 	for x in [-5.0, 0.0, 5.0]:
-		_add_box(world_root, "Ceiling beam", Vector3(x, 3.9, 0), Vector3(0.09, 0.12, 13.4), Color("#a9987b"))
-		_add_box(world_root, "Pendant shade", Vector3(x, 3.58, -0.8), Vector3(0.6, 0.09, 0.58), Color("#efe0bc"))
+		_add_box(world_root, "Ceiling beam", Vector3(x, 3.9, 0), Vector3(0.09, 0.12, 13.4), Color("#e1d6c4"))
+		_add_box(world_root, "Pendant shade", Vector3(x, 3.58, -0.8), Vector3(0.6, 0.09, 0.58), Color("#fff0ca"))
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-43, -28, 0)
-	sun.light_color = Color("#ffe5bd")
-	sun.light_energy = 1.4
+	sun.light_color = Color("#fff0d4")
+	sun.light_energy = 1.8
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 18.0
 	world_root.add_child(sun)
 	var ambient := OmniLight3D.new()
 	ambient.position = Vector3(0, 3.1, -0.5)
-	ambient.light_color = Color("#ffe0a6")
-	ambient.light_energy = 1.1
+	ambient.light_color = Color("#fff0d4")
+	ambient.light_energy = 1.45
 	ambient.omni_range = 12.0
 	world_root.add_child(ambient)
 
 
 func _add_desk(parent: Node3D, position: Vector3, width: float, depth: float, color: Color) -> void:
-	_add_box(parent, "Desk top", position + Vector3(0, 0.82, 0), Vector3(width, 0.16, depth), color)
+	_add_box(parent, "Desk top", position + Vector3(0, 0.82, 0), Vector3(width, 0.16, depth), color, true)
 	for x in [-width * 0.42, width * 0.42]:
 		for z in [-depth * 0.34, depth * 0.34]:
 			_add_box(parent, "Desk leg", position + Vector3(x, 0.4, z), Vector3(0.12, 0.8, 0.12), Color("#50483d"))
@@ -422,7 +453,7 @@ func _add_paper_stack(parent: Node3D, position: Vector3) -> void:
 
 
 func _add_cabinet(parent: Node3D, position: Vector3, color: Color = Color("#7c735f")) -> void:
-	_add_box(parent, "Cabinet carcass", position + Vector3(0, 0.82, 0), Vector3(1.3, 1.64, 0.66), color)
+	_add_box(parent, "Cabinet carcass", position + Vector3(0, 0.82, 0), Vector3(1.3, 1.64, 0.66), color, true)
 	for i in range(3):
 		_add_box(parent, "Drawer seam", position + Vector3(0, 0.42 + i * 0.43, 0.34), Vector3(1.2, 0.035, 0.05), Color("#534c40"))
 		_add_box(parent, "Drawer pull", position + Vector3(0.42, 0.42 + i * 0.43, 0.39), Vector3(0.06, 0.08, 0.045), Color("#c9ad73"), false, 0.35)
@@ -452,15 +483,15 @@ func _add_notice_board(parent: Node3D, position: Vector3, heading: String) -> vo
 
 
 func _build_office() -> void:
-	_add_desk(world_root, Vector3(-0.5, 0, -0.2), 3.15, 1.5, Color("#75583f"))
+	_add_desk(world_root, Vector3(-0.5, 0, -0.2), 3.15, 1.5, Color("#d2b893"))
 	_add_computer(world_root, Vector3(0.25, 0, -0.45))
 	_add_paper_stack(world_root, Vector3(-1.35, 1.0, -0.3))
-	_add_cabinet(world_root, Vector3(-6.25, 0, -1.6))
+	_add_cabinet(world_root, Vector3(-6.25, 0, -1.6), Color("#b9aa95"))
 	_add_plant(world_root, Vector3(6.35, 0, -4.8))
-	_add_desk(world_root, Vector3(4.6, 0, -2.7), 2.7, 1.38, Color("#66745f"))
+	_add_desk(world_root, Vector3(4.6, 0, -2.7), 2.7, 1.38, Color("#a7b5a2"))
 	_add_notice_board(world_root, Vector3(-6.2, 2.25, -6.65), "입찰공고")
-	_add_box(world_root, "Bench seat", Vector3(4.45, 0.52, -1.4), Vector3(0.82, 0.12, 0.62), Color("#54645b"))
-	_add_box(world_root, "Bench back", Vector3(4.45, 0.93, -1.66), Vector3(0.82, 0.68, 0.1), Color("#54645b"))
+	_add_box(world_root, "Bench seat", Vector3(4.45, 0.52, -1.4), Vector3(0.82, 0.12, 0.62), Color("#90a79b"))
+	_add_box(world_root, "Bench back", Vector3(4.45, 0.93, -1.66), Vector3(0.82, 0.68, 0.1), Color("#90a79b"))
 	_add_box(world_root, "Laptop base", Vector3(1.3, 1.0, -0.1), Vector3(0.62, 0.035, 0.44), Color("#434f4c"))
 	_add_box(world_root, "Lamp base", Vector3(-2.0, 1.0, -0.25), Vector3(0.2, 0.035, 0.2), Color("#a98c60"), false, 0.32)
 	var stem := MeshInstance3D.new()
@@ -477,10 +508,10 @@ func _build_office() -> void:
 
 
 func _build_city_room() -> void:
-	_add_desk(world_root, Vector3(0, 0, -0.35), 4.6, 1.6, Color("#65796b"))
+	_add_desk(world_root, Vector3(0, 0, -0.35), 4.6, 1.6, Color("#9eb5a6"))
 	_add_paper_stack(world_root, Vector3(-0.65, 1.0, -0.5))
-	_add_cabinet(world_root, Vector3(-6.2, 0, -1.7), Color("#6c8076"))
-	_add_cabinet(world_root, Vector3(6.2, 0, -3.8), Color("#708377"))
+	_add_cabinet(world_root, Vector3(-6.2, 0, -1.7), Color("#b1c2b2"))
+	_add_cabinet(world_root, Vector3(6.2, 0, -3.8), Color("#b1c2b2"))
 	_add_plant(world_root, Vector3(6.4, 0, 4.2))
 	_add_notice_board(world_root, Vector3(-5.7, 2.2, -6.65), "구매 규격")
 	_add_computer(world_root, Vector3(1.0, 0, -0.55))
@@ -488,18 +519,18 @@ func _build_city_room() -> void:
 
 
 func _build_review_room() -> void:
-	_add_desk(world_root, Vector3(0, 0, -0.35), 4.6, 1.65, Color("#556c69"))
+	_add_desk(world_root, Vector3(0, 0, -0.35), 4.6, 1.65, Color("#86a9ae"))
 	_add_paper_stack(world_root, Vector3(-0.55, 1.0, -0.5))
 	_add_paper_stack(world_root, Vector3(0.85, 1.0, -0.5))
-	_add_cabinet(world_root, Vector3(-6.15, 0, -2.0), Color("#657a78"))
-	_add_cabinet(world_root, Vector3(6.15, 0, -2.0), Color("#657a78"))
+	_add_cabinet(world_root, Vector3(-6.15, 0, -2.0), Color("#b0c4c2"))
+	_add_cabinet(world_root, Vector3(6.15, 0, -2.0), Color("#b0c4c2"))
 	_add_notice_board(world_root, Vector3(-5.6, 2.2, -6.65), "심사 접수")
 	_add_computer(world_root, Vector3(0.1, 0, -0.52))
 	_add_npc(world_root, "윤서진", Vector3(2.65, 0.02, 1.2), Color("#315768"))
 
 
 func _build_showroom() -> void:
-	var colors := [Color("#bd815d"), Color("#7b907a"), Color("#6f8995")]
+	var colors := [Color("#e6ad88"), Color("#a9c4ad"), Color("#a8cbd2")]
 	var xs := [-4.3, 0.0, 4.3]
 	var names := ["한빛 · 실속", "대성 · 베이직", "새길 · 모던"]
 	for i in range(3):
@@ -1322,7 +1353,7 @@ func _build_title() -> void:
 	title.add_theme_font_size_override("font_size", 36)
 	stack.add_child(title)
 	var description := Label.new()
-	description.text = "작은 가구회사의 대표와 구매 담당자가 되어\n공공조달 현장을 직접 걷고 업무를 처리하세요."
+	description.text = "조달청 마스코트 나라미와 달이와 함께\n공공조달 현장을 직접 걸으며 업무를 처리하세요."
 	description.add_theme_color_override("font_color", Color("#69756c"))
 	description.add_theme_font_size_override("font_size", 14)
 	stack.add_child(description)
@@ -1514,7 +1545,8 @@ func _update_hud() -> void:
 	if guide_tip:
 		guide_tip.text = _guide_context()
 	if actor_text:
-		actor_text.text = "%s  ·  %s" % [state.get("pov", "한 대표"), _affiliation()]
+		var display_name := "나라미 · 한 대표 시점" if str(state.get("pov", "한 대표")) == "한 대표" else str(state.get("pov", "한 대표"))
+		actor_text.text = "%s  ·  %s" % [display_name, _affiliation()]
 	_update_gauge("money", int(state.get("money", 0)), "%s원" % _fmt(int(state.get("money", 0))), float(CONFIG.starting_money), GOLD)
 	_update_gauge("rep", int(state.get("rep", 0)), "%d/100" % int(state.get("rep", 0)), 100.0, GREEN)
 	_update_gauge("risk", int(state.get("risk", 0)), "%d/100" % int(state.get("risk", 0)), 100.0, RED)
@@ -1553,7 +1585,7 @@ func _objective() -> String:
 
 func _guide_context() -> String:
 	if not nearby_target.is_empty(): return "E를 눌러 ‘%s’와 상호작용하세요." % nearby_target.label
-	return _objective()
+	return "달이: " + _objective()
 
 
 func _affiliation() -> String:
