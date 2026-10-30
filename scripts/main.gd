@@ -156,7 +156,7 @@ func _build_world() -> void:
 	environment.background_color = Color("#e8f0eb")
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color("#fff4e9")
-	environment.ambient_light_energy = 0.55
+	environment.ambient_light_energy = 0.32
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	environment.ssr_enabled = false
 	environment.glow_enabled = false
@@ -187,8 +187,8 @@ func _build_camera() -> void:
 	camera.name = "FixedDioramaCamera"
 	camera.current = true
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 13.0
-	camera.position = Vector3(2.2, 15.0, 11.0)
+	camera.size = 12.0
+	camera.position = Vector3(2.2, 14.0, 14.0)
 	add_child(camera)
 	camera.look_at(Vector3(2.2, 0.0, 0.0), Vector3.UP)
 
@@ -332,10 +332,10 @@ func _set_room(room: String) -> void:
 
 func _room_palette(room: String) -> Dictionary:
 	match room:
-		"city": return {"wall": Color("#e6eee6"), "floor": Color("#c8d6cc"), "wood": Color("#a5b8a8"), "accent": Color("#82a99d")}
-		"review": return {"wall": Color("#e5edef"), "floor": Color("#bfd0d2"), "wood": Color("#87a9ad"), "accent": Color("#8fc4cf")}
-		"showroom": return {"wall": Color("#f3eadb"), "floor": Color("#dfceb2"), "wood": Color("#dfa578"), "accent": Color("#9bbab0")}
-		_: return {"wall": Color("#eee5d6"), "floor": Color("#d2c4ac"), "wood": Color("#d5b995"), "accent": Color("#8da8a0")}
+		"city": return {"wall": Color("#e4ebe5"), "floor": Color("#aebfb3"), "wood": Color("#a5b8a8"), "accent": Color("#82a99d")}
+		"review": return {"wall": Color("#e4edef"), "floor": Color("#a9c1c4"), "wood": Color("#87a9ad"), "accent": Color("#8fc4cf")}
+		"showroom": return {"wall": Color("#f1e8da"), "floor": Color("#d1b990"), "wood": Color("#dfa578"), "accent": Color("#9bbab0")}
+		_: return {"wall": Color("#eee5d6"), "floor": Color("#c5b392"), "wood": Color("#d5b995"), "accent": Color("#8da8a0")}
 
 
 func _build_room_shell(palette: Dictionary) -> void:
@@ -357,7 +357,7 @@ func _build_room_shell(palette: Dictionary) -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-43, -28, 0)
 	sun.light_color = Color("#fff0d4")
-	sun.light_energy = 0.68
+	sun.light_energy = 0.42
 	sun.shadow_enabled = true
 	sun.light_size = 2.2
 	sun.directional_shadow_max_distance = 12.0
@@ -365,7 +365,7 @@ func _build_room_shell(palette: Dictionary) -> void:
 	var ambient := OmniLight3D.new()
 	ambient.position = Vector3(0, 3.1, -0.5)
 	ambient.light_color = Color("#fff0d4")
-	ambient.light_energy = 0.2
+	ambient.light_energy = 0.1
 	ambient.omni_range = 9.0
 	world_root.add_child(ambient)
 
