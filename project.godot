@@ -1,14 +1,19 @@
 ; Engine configuration file.
-; 「낙찰! 나라장터 생존기」 — Godot 4.7.2
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
 [application]
 
 config/name="낙찰! 나라장터 생존기"
+config/description="공공조달의 업무 현장을 직접 탐색하며 경험하는 3D 교육 시뮬레이션"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
-config/description="공공조달의 업무 현장을 직접 탐색하며 경험하는 3D 교육 시뮬레이션"
 
 [display]
 
@@ -18,13 +23,12 @@ window/size/window_width_override=1440
 window/size/window_height_override=900
 window/stretch/mode="canvas_items"
 
+[gui]
+
+theme/default_font_multichannel_signed_distance_field=true
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
-textures/default_filters/use_nearest_mipmap_filter=false
 environment/defaults/default_clear_color=Color(0.18, 0.24, 0.24, 1)
-
-[gui]
-
-theme/default_font_multichannel_signed_distance_field=true
