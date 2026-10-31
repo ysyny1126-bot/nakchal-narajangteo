@@ -42,6 +42,24 @@ python3 -m http.server 8765 --directory build/web
 - `export_presets.cfg`의 Web 프리셋은 GitHub Pages에서 바로 돌아가도록 단일 스레드(`thread_support=false`)로 내보냅니다.
 - 결과물 `build/web/`을 `gh-pages` 브랜치에 올리면 배포됩니다.
 
+### 성공 과정 시연 영상
+
+`videos/`에 챕터별 이상적인 성공 루트를 실제 게임 화면으로 녹화한 영상이 있습니다(1920×1080, 30fps, 효과음·배경음 포함).
+
+| 파일 | 길이 | 내용 |
+|---|---|---|
+| `videos/ep01_success.mp4` | 1분 14초 | 요청서·견본 조사 → 성능 중심 규격 → 공고·원가 확인 → 예비가격·투찰 1순위 → 보관함에서 실제 실적 발견 → 사실대로 제출, 적격심사 통과 |
+| `videos/ep02_success.mp4` | 43초 | 균형형 등록 → 구매 비교 → 상생세일 참여 → 3분기 가격 인하 반영 → 4분기 손익표 |
+
+나라미가 자동 조작(autopilot)으로 실제 걸어가 조사·선택하며, 단계 자막과 시작·끝 타이틀 카드를 덧붙입니다. 다시 녹화하려면 1080p 창 크기를 지정하는 `override.cfg`를 잠시 두고 Godot 무비 라이터로 녹화한 뒤 ffmpeg로 MP4로 변환합니다.
+
+```sh
+printf '[display]\nwindow/size/window_width_override=1920\nwindow/size/window_height_override=1080\n' > override.cfg
+"/Users/yangsang-yun/Downloads/Godot.app/Contents/MacOS/Godot" --path . --fixed-fps 30 --write-movie build/video/ep01.avi -- --video=ep01
+ffmpeg -i build/video/ep01.avi -c:v libx264 -crf 20 -pix_fmt yuv420p -c:a aac videos/ep01_success.mp4
+rm override.cfg
+```
+
 ### 자동 캡처
 
 아래 명령을 실행하면 두 챕터를 자동으로 진행하면서 `screenshots/`에 장면별 PNG를 저장합니다. 캡처 모드에서는 저장 파일을 건드리지 않습니다.
@@ -128,6 +146,10 @@ scripts/ui/modal.gd               대화·업무 창
 scripts/ui/ui_theme.gd, dali_icon.gd
 scripts/audio/sound_bank.gd       절차 합성 효과음·배경음
 scripts/dev/capture_director.gd   자동 캡처(개발용)
+scripts/dev/video_director.gd     성공 과정 시연 영상 자동 연출(개발용)
+assets/models/kenney/             CC0 가구 모델(Kenney)
+assets/textures/                  CC0 바닥·벽 텍스처(Poly Haven)
+videos/                           챕터별 성공 과정 시연 영상
 screenshots/                      챕터·공간별 실행 캡처
 ```
 
@@ -135,9 +157,14 @@ screenshots/                      챕터·공간별 실행 캡처
 
 ## 에셋 출처와 한계
 
-- **외부 모델·텍스처·사운드 파일은 포함하지 않습니다.**
-  - 3D 형태와 바닥 텍스처(나무·카펫·타일)는 모두 코드로 생성합니다.
-  - 효과음과 배경음은 `sound_bank.gd`에서 사인파로 합성합니다.
+- **가구·소품 3D 모델**: [Kenney Furniture Kit 2.0](https://kenney.nl/assets/furniture-kit) — Kenney, **CC0 1.0**
+  - 책상·의자·책장·소파·화분·러그·상자 등 39종을 `assets/models/kenney/`에 포함했습니다. 라이선스: `assets/models/kenney/Kenney-License.txt`
+  - 원래의 파스텔 단색 재질은 `Props.kit_material()`에서 원목 사진 질감과 공간별 색으로 바꿔 씁니다.
+- **바닥·벽 사진 텍스처**: [Poly Haven](https://polyhaven.com) — **CC0 1.0**
+  - `oak_wood_planks`, `laminate_floor_02`, `herringbone_parquet`, `painted_plaster_wall` (1K 컬러·노멀 맵)을 `assets/textures/`에 포함했습니다.
+  - 쇼핑몰 타일 바닥과 일부 소품은 코드로 생성합니다.
+- **사운드**: 효과음과 배경음은 `sound_bank.gd`에서 사인파로 합성합니다(외부 파일 없음).
+- **시연 영상 인코딩**: ffmpeg 7.1(imageio-ffmpeg 배포 바이너리)로 변환했습니다. 영상 파일 자체에는 위 에셋과 게임 화면만 들어 있습니다.
 - **글꼴**: [Pretendard](https://github.com/orioncactus/pretendard) v1.3.9 Medium·Bold
   - © 2021 Kil Hyung-jin, SIL Open Font License 1.1
   - 웹 빌드에서도 한글이 보이도록 `fonts/`에 포함했습니다.
@@ -146,8 +173,8 @@ screenshots/                      챕터·공간별 실행 캡처
   - 나라미: 둥근 흰 몸, 하늘색 바이저, 검은 눈과 하이라이트, 주황 부리·발, 빨간 스카프, 어두운 날개 끝
   - 달이: 주황 머리와 귀, 이마 줄무늬 세 개, 흰 주둥이·배·꼬리 끝
   - **정식 리깅 3D 모델이 없어 다음 한계가 있습니다.**
-    - 형태는 타원체와 표면 패치의 조합이라 원본 일러스트의 미세한 곡선을 그대로 재현하지 못합니다.
-    - 뼈대 없이 노드 단위(몸·날개/팔·발·꼬리)로만 움직입니다. 걷기·대기·방향 전환·눈 깜빡임·조사·안내·환호·실망 동작은 단순한 회전·이동으로 표현합니다.
-    - 표정은 바꿀 수 없습니다(눈 깜빡임만 가능).
+	- 형태는 타원체와 표면 패치의 조합이라 원본 일러스트의 미세한 곡선을 그대로 재현하지 못합니다.
+	- 뼈대 없이 노드 단위(몸·날개/팔·발·꼬리)로만 움직입니다. 걷기·대기·방향 전환·눈 깜빡임·조사·안내·환호·실망 동작은 단순한 회전·이동으로 표현합니다.
+	- 표정은 바꿀 수 없습니다(눈 깜빡임만 가능).
   - 정식 모델(glTF)이 생기면 `mascot_actor.gd`의 `build()`를 교체해 쓸 수 있습니다.
 - 프로젝트 폴더 안에서 참고 PNG를 찾지 못했습니다. 그래서 작업 지시서에 적힌 캐릭터 특징을 기준으로 제작했습니다.

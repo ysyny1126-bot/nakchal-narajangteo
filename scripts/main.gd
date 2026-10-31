@@ -40,6 +40,8 @@ var sound: Node
 var game_active := false
 var _last_target := ""
 var _bid := {}
+## Set by the video director to walk Nareumi without keyboard input.
+var autopilot := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -53,10 +55,14 @@ func _ready() -> void:
 	_load_save()
 	_enter_room("city", false)
 	_show_title()
-	if "--capture" in OS.get_cmdline_user_args():
-		var director: Node = load("res://scripts/dev/capture_director.gd").new()
-		director.game = self
-		add_child(director)
+	for arg in OS.get_cmdline_user_args():
+		if arg == "--capture" or arg.begins_with("--video="):
+			var script_path := "res://scripts/dev/capture_director.gd" if arg == "--capture" else "res://scripts/dev/video_director.gd"
+			var director: Node = load(script_path).new()
+			director.game = self
+			if arg.begins_with("--video="):
+				director.set("chapter", arg.trim_prefix("--video="))
+			add_child(director)
 
 
 # --- Setup ---------------------------------------------------------------
@@ -285,6 +291,8 @@ func _physics_process(delta: float) -> void:
 	if direction.length_squared() > 1.0:
 		direction = direction.normalized()
 	direction = direction.rotated(Vector3.UP, deg_to_rad(CAM_YAW))
+	if autopilot != Vector3.ZERO and _can_move():
+		direction = autopilot
 	player.velocity = direction * MOVE_SPEED
 	player.move_and_slide()
 	if layout.has("size"):
@@ -1255,8 +1263,9 @@ func _on_choice(id: String, _option: Dictionary) -> void:
 # --- Save ----------------------------------------------------------------
 
 func _write_save() -> void:
-	if "--capture" in OS.get_cmdline_user_args():
-		return
+	for arg in OS.get_cmdline_user_args():
+		if arg == "--capture" or arg.begins_with("--video="):
+			return
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file:
 		file.store_string(JSON.stringify(state))
