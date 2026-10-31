@@ -72,7 +72,12 @@ func _build_top() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	bar.add_child(row)
-	var seal := UI.chip("낙", UI.ORANGE, Color.WHITE, 13)
+	var seal := TextureRect.new()
+	seal.texture = preload("res://assets/brand/pps_emblem.png")
+	seal.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	seal.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	seal.custom_minimum_size = Vector2(26, 26)
+	seal.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(seal)
 	row.add_child(UI.label("낙찰! 나라장터 생존기", 15, Color("#f5f0e4"), true))
 	var sep := UI.label("│", 13, Color("#4f6a72"))

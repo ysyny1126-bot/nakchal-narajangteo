@@ -17,6 +17,7 @@ const Glossary = preload("res://scripts/core/glossary.gd")
 const Endings = preload("res://scripts/core/endings.gd")
 const Events = preload("res://scripts/core/events.gd")
 const TouchControls = preload("res://scripts/ui/touch_controls.gd")
+const TitleScreen = preload("res://scripts/ui/title_screen.gd")
 
 const SAVE_PATH := "user://nakchal-save.json"
 const SAVE_VERSION := 4
@@ -63,6 +64,8 @@ var profile := {"achievements": [], "endings": [], "terms": [], "settings": {"te
 var _quiz := {}
 var _summary_ep := 0
 var _term_card: Control
+var _title_screen: Control
+var _splash_shown := false
 ## Keeps the ending scene still while its final dialog is open.
 var ending_hold := false
 var _alt_from_ending := false
@@ -447,10 +450,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if mode == DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_FULLSCREEN)
 		return
 	if title_layer.visible and not modal.is_open():
-		if key == KEY_1 or key == KEY_ENTER or key == KEY_KP_ENTER: _start_new_game()
+		if is_instance_valid(_title_screen):
+			_title_screen.skip_splash()
+		if key in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE]:
+			if int(state.episode) > 0: _continue_game()
+			else: _request_new_game()
+		elif key == KEY_1: _request_new_game()
 		elif key == KEY_2: _continue_game()
 		elif key == KEY_3: _show_settings()
 		elif key == KEY_4: _show_collection()
+		elif key == KEY_T: _show_terms()
 		return
 	if modal.is_open():
 		if key == KEY_ESCAPE and modal.dismissable:
@@ -488,63 +497,31 @@ func _show_title() -> void:
 		child.queue_free()
 	title_layer.visible = true
 	_stage_title()
-	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", UI.shadow_panel(Color("#f8f4ebf5"), Color("#d8cfbf"), 18, 30))
-	card.position = Vector2(70, 150)
-	card.custom_minimum_size = Vector2(520, 0)
-	title_layer.add_child(card)
-	var stack := VBoxContainer.new()
-	stack.add_theme_constant_override("separation", 12)
-	card.add_child(stack)
-	stack.add_child(UI.label("조달청 공공조달 업무 체험 · 3D 교육 시뮬레이션", 12, UI.ORANGE, true))
-	stack.add_child(UI.label("낙찰! 나라장터 생존기", 38, UI.NAVY, true))
-	stack.add_child(UI.wrap(UI.label("나라미를 움직여 업무 공간을 조사하고, 달이의 안내를 따라 구매 규격부터 입찰·심사, 종합쇼핑몰 판매까지 직접 결정해 보세요.", 14, UI.INK_SOFT)))
-	var eps := HBoxContainer.new()
-	eps.add_theme_constant_override("separation", 8)
-	eps.add_child(UI.chip("EP01 구매 규격과 입찰", UI.NAVY, Color.WHITE, 12))
-	eps.add_child(UI.chip("EP02 종합쇼핑몰", Color("#2f6f80"), Color.WHITE, 12))
-	eps.add_child(UI.chip("EP03 납품·검수", Color("#3d5236"), Color.WHITE, 12))
-	stack.add_child(eps)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	stack.add_child(row)
-	var start := Button.new()
-	start.text = "1   업무 시작"
-	start.custom_minimum_size = Vector2(180, 46)
-	start.focus_mode = Control.FOCUS_NONE
-	UI.style_button(start, true)
-	start.add_theme_font_size_override("font_size", 16)
-	start.pressed.connect(_start_new_game)
-	row.add_child(start)
-	var cont := Button.new()
-	cont.text = "2   이어하기"
-	cont.custom_minimum_size = Vector2(150, 46)
-	cont.focus_mode = Control.FOCUS_NONE
-	cont.disabled = int(state.episode) == 0
-	UI.style_button(cont, false)
-	cont.add_theme_font_size_override("font_size", 16)
-	cont.pressed.connect(_continue_game)
-	row.add_child(cont)
-	var row2 := HBoxContainer.new()
-	row2.add_theme_constant_override("separation", 10)
-	stack.add_child(row2)
-	for item in [["3   설정", _show_settings], ["4   엔딩·업적 도감", _show_collection]]:
-		var b := Button.new()
-		b.text = item[0]
-		b.custom_minimum_size = Vector2(0, 38)
-		b.focus_mode = Control.FOCUS_NONE
-		UI.style_button(b, false)
-		b.pressed.connect(item[1])
-		row2.add_child(b)
-	var keys := HBoxContainer.new()
-	keys.add_theme_constant_override("separation", 4)
-	for pair in [["WASD", "이동"], ["E", "조사"], ["1~4", "선택"], ["Esc", "닫기"], ["F11", "전체화면"]]:
-		keys.add_child(UI.keycap(pair[0]))
-		keys.add_child(UI.label(pair[1] + "  ", 11, UI.INK_SOFT))
-	stack.add_child(keys)
-	if int(state.episode) > 0:
-		stack.add_child(UI.label("저장된 진행: %s · %s" % [Chapters.EP[int(state.episode)].code, Chapters.objective(state)], 11, UI.MUTED))
-	stack.add_child(UI.label("엔딩 %d/%d · 업적 %d/%d · 용어 도감 %d/%d" % [(profile.endings as Array).size(), Endings.ENDINGS.size(), (profile.achievements as Array).size(), Endings.ACHIEVEMENTS.size(), (profile.terms as Array).size(), Glossary.TERMS.size()], 11, UI.NAVY, true))
+	var screen := TitleScreen.new()
+	title_layer.add_child(screen)
+	var has_save := int(state.episode) > 0
+	var save_text := "%s · %s" % [Chapters.EP[int(state.episode)].code, Chapters.EP[int(state.episode)].title] if has_save else ""
+	var record := "엔딩 %d/%d · 업적 %d/%d · 용어 도감 %d/%d" % [(profile.endings as Array).size(), Endings.ENDINGS.size(), (profile.achievements as Array).size(), Endings.ACHIEVEMENTS.size(), (profile.terms as Array).size(), Glossary.TERMS.size()]
+	screen.build(has_save, save_text, record)
+	screen.start_pressed.connect(_request_new_game)
+	screen.continue_pressed.connect(_continue_game)
+	screen.settings_pressed.connect(_show_settings)
+	screen.collection_pressed.connect(_show_collection)
+	screen.terms_pressed.connect(_show_terms)
+	_title_screen = screen
+	var splash := not _splash_shown and not _dev_mode()
+	_splash_shown = true
+	screen.play(splash)
+
+
+## New game from the title: confirm first when it would replace a save.
+func _request_new_game() -> void:
+	if int(state.episode) > 0 and not modal.is_open():
+		modal.open({"kicker": "새로 시작", "title": "처음부터 다시 시작할까요?", "body": "저장된 진행([b]%s[/b])이 지워집니다. 엔딩·업적·용어 도감 기록은 그대로 남아요." % Chapters.objective(state), "accent": UI.ORANGE, "buttons": [{"label": "새로 시작하기", "id": "confirm_new"}, {"label": "이어하기로 돌아가기", "id": "close", "primary": false}]})
+		sound.play("open")
+		return
+	modal.close()
+	_start_new_game()
 
 
 func _start_new_game() -> void:
@@ -596,9 +573,9 @@ func _stage_title() -> void:
 	dali.face_direction(Vector3(-0.5, 0, 1))
 	narami.set_moving(false)
 	dali.set_moving(false)
-	cine_cam.fov = 34.0
-	cine_cam.global_position = Vector3(0.7, 1.55, 5.6)
-	cine_cam.look_at(Vector3(1.35, 0.95, 0.0))
+	cine_cam.fov = 40.0
+	cine_cam.global_position = Vector3(2.2, 1.05, 6.1)
+	cine_cam.look_at(Vector3(2.2, 0.8, 0.0))
 	cine_cam.current = true
 	_title_clock = 0.0
 
@@ -613,6 +590,9 @@ func _animate_title(delta: float) -> void:
 		else:
 			narami.play_action("cheer")
 			dali.play_action("talk")
+	var burst := world_root.get_node_or_null("Sunburst") as Node3D
+	if burst:
+		burst.rotation.z += delta * 0.12
 	var floats: Node = world_root.get_node_or_null("Floating")
 	if floats:
 		for i in range(floats.get_child_count()):
@@ -2105,7 +2085,14 @@ func _fill_credits(roll: VBoxContainer, id: String) -> void:
 		_centered(roll, pair[0], 11, soft)
 		_centered(roll, pair[1], 15, light, true)
 		_credit_gap(roll, 8)
-	_credit_gap(roll, 30)
+	_credit_gap(roll, 24)
+	var mark := TextureRect.new()
+	mark.texture = preload("res://assets/brand/pps_lockup_v_white.png")
+	mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	mark.custom_minimum_size = Vector2(380, 110)
+	roll.add_child(mark)
+	_credit_gap(roll, 24)
 	_centered(roll, "나라미 · 달이와 함께해 주셔서", 15, light, true)
 	_centered(roll, "고맙습니다!", 26, UI.ORANGE, true)
 
@@ -2199,7 +2186,15 @@ func _build_share_card() -> Control:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 10)
 	head.add_child(UI.chip("낙", UI.ORANGE, Color.WHITE, 16))
-	head.add_child(UI.label("낙찰! 나라장터 생존기 · 나의 결과 카드", 15, UI.NAVY, true))
+	var head_title := UI.label("낙찰! 나라장터 생존기 · 나의 결과 카드", 15, UI.NAVY, true)
+	head_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(head_title)
+	var card_logo := TextureRect.new()
+	card_logo.texture = preload("res://assets/brand/pps_lockup_h.png")
+	card_logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	card_logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	card_logo.custom_minimum_size = Vector2(94, 36)
+	head.add_child(card_logo)
 	col.add_child(head)
 	col.add_child(UI.label("ENDING %d · %s" % [int(e.no), e.title], 32, e.color, true))
 	col.add_child(UI.label(e.subtitle, 15, UI.INK_SOFT))
@@ -2584,6 +2579,9 @@ func _on_choice(id: String, _option: Dictionary) -> void:
 		"start_ep3":
 			_close_modal()
 			_start_ep3()
+		"confirm_new":
+			modal.close()
+			_start_new_game()
 		"ep3_summary": _finish_chapter(3)
 		"ending_go", "ending_now": _go_ending()
 		"ending_final": _show_ending_final()

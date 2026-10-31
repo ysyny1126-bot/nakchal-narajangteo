@@ -13,6 +13,9 @@ config_version=5
 config/name="낙찰! 나라장터 생존기"
 config/description="공공조달의 업무 현장을 직접 탐색하며 경험하는 3D 교육 시뮬레이션"
 run/main_scene="res://scenes/main.tscn"
+boot_splash/bg_color=Color(1, 1, 1, 1)
+boot_splash/image="res://assets/brand/boot_splash.png"
+boot_splash/fullsize=false
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [display]

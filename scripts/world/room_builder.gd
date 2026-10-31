@@ -250,6 +250,12 @@ static func _review(root: Node3D) -> Dictionary:
 	var size := Vector2(8.0, 6.0)
 	_shell(root, size, Props.surface_mat("herringbone_parquet", Color("#a99a8a"), 2.0, 0.7), Color("#cfd4d6"), Color("#3f5566"), Color("#2c3e4c"))
 	_room_sign(root, size, "조달청 · 적격심사실", Color("#24435a"), 1.3)
+	var emblem := Sprite3D.new()
+	emblem.texture = load("res://assets/brand/pps_emblem.png")
+	emblem.pixel_size = 0.00084
+	emblem.shaded = false
+	emblem.position = Vector3(-0.86, 1.86, -size.y * 0.5 + 0.03)
+	root.add_child(emblem)
 	Props.wall_board(root, Vector3(-2.3, 1.25, -2.95), Vector2(2.0, 1.2), Color("#24435a"), Color("#eef1f2"), "적격심사 기준표", "실적 40 · 경영 25\n가격 30 · 신인도 ±5\n85점 이상 통과", Color("#24435a"))
 	_rug(root, Vector3(1.4, 0, -0.6), Vector2(3.4, 2.2), Color("#3f5566"), Color("#c9a24c"))
 	# Submission counter with Yoon
@@ -450,6 +456,21 @@ static func _warehouse(root: Node3D) -> Dictionary:
 
 # --- Title stage -----------------------------------------------------------------
 
+static func _sunburst_texture() -> ImageTexture:
+	var n := 512
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var c := Vector2(n, n) * 0.5
+	for y in n:
+		for x in n:
+			var d := Vector2(x, y) - c
+			var r := d.length() / (n * 0.5)
+			var ray := clampf(sin(d.angle() * 16.0) * 2.5, 0.0, 1.0)
+			var a := ray * 0.22 * clampf(1.0 - r, 0.0, 1.0) + 0.25 * clampf(1.0 - r * 1.6, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1.0, 0.97, 0.86, a))
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
 static func _title(root: Node3D) -> Dictionary:
 	# Soft blue gradient backdrop in the procurement-service palette.
 	var gradient := Gradient.new()
@@ -487,8 +508,19 @@ static func _title(root: Node3D) -> Dictionary:
 	ring.rotation_degrees.x = 90
 	ring.position = Vector3(2.2, 1.35, -1.4)
 	root.add_child(ring)
-	var label := Props.label(root, "나라장터 · 공공조달", Vector3(2.2, 2.95, -1.38), 44, Color("#fbf6ea"))
-	label.pixel_size = 0.0052
+	# Slowly turning sunburst behind the ring (game-app title flair).
+	var burst := MeshInstance3D.new()
+	burst.name = "Sunburst"
+	var burst_quad := QuadMesh.new()
+	burst_quad.size = Vector2(11, 11)
+	burst.mesh = burst_quad
+	var burst_mat := StandardMaterial3D.new()
+	burst_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	burst_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	burst_mat.albedo_texture = _sunburst_texture()
+	burst.material_override = burst_mat
+	burst.position = Vector3(2.2, 1.35, -3.0)
+	root.add_child(burst)
 	# Floating procurement props: documents, coins, a stamp and a gavel-like seal.
 	var floating := Node3D.new()
 	floating.name = "Floating"
