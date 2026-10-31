@@ -60,6 +60,25 @@ ffmpeg -i build/video/ep01.avi -c:v libx264 -crf 20 -pix_fmt yuv420p -c:a aac vi
 rm override.cfg
 ```
 
+### Unity 오프닝 시네마틱
+
+`videos/opening_cinematic_unity.mp4`(21초, 1920×1080, 배경음 포함)는 게임의 네 공간과 나라미·달이를 Unity로 옮겨 원근 카메라로 연출한 오프닝 영상입니다. 시청 → 업체 → 조달청 → 쇼핑몰을 차례로 비추고, 두 캐릭터와 타이틀로 끝납니다.
+
+- **Unity 프로젝트**: `unity_cinematic/` (Unity 6000.6.7f1, Built-in 렌더 파이프라인)
+- **사용 패키지**: glTFast 6.20.0 (glb 가져오기)
+- **연출 스크립트**: `Assets/Editor/CinematicRenderer.cs`. 카메라 경로·자막·타이틀·조명을 정하고, 1920×1080 PNG 프레임을 렌더링합니다.
+- **3D 장면 내보내기**: `scripts/dev/gltf_export.gd`가 Godot에서 방 4개와 캐릭터 2개를 `build/unity_export/*.glb`로 내보냅니다. 이 파일은 `Assets/Imported/`로 복사해 쓰며, 다시 만들 수 있어 Git에는 올리지 않습니다.
+- 게임 플레이 화면이 아니라 연출 영상입니다. 실제 플레이는 `ep01_success.mp4`·`ep02_success.mp4`가 보여 줍니다.
+
+다시 만들려면:
+
+```sh
+"/Users/yangsang-yun/Downloads/Godot.app/Contents/MacOS/Godot" --path . -s res://scripts/dev/gltf_export.gd
+mkdir -p unity_cinematic/Assets/Imported && cp build/unity_export/*.glb unity_cinematic/Assets/Imported/
+/Applications/Unity/Hub/Editor/6000.6.7f1/Unity.app/Contents/MacOS/Unity -batchmode -projectPath unity_cinematic -executeMethod CinematicRenderer.Render -quit
+ffmpeg -framerate 30 -i build/unity_frames/frame_%05d.png -c:v libx264 -crf 19 -pix_fmt yuv420p videos/opening_cinematic_unity.mp4
+```
+
 ### 자동 캡처
 
 아래 명령을 실행하면 두 챕터를 자동으로 진행하면서 `screenshots/`에 장면별 PNG를 저장합니다. 캡처 모드에서는 저장 파일을 건드리지 않습니다.
@@ -149,7 +168,9 @@ scripts/dev/capture_director.gd   자동 캡처(개발용)
 scripts/dev/video_director.gd     성공 과정 시연 영상 자동 연출(개발용)
 assets/models/kenney/             CC0 가구 모델(Kenney)
 assets/textures/                  CC0 바닥·벽 텍스처(Poly Haven)
-videos/                           챕터별 성공 과정 시연 영상
+videos/                           성공 과정 시연 영상 + Unity 오프닝 시네마틱
+unity_cinematic/                  오프닝 시네마틱용 Unity 프로젝트
+scripts/dev/gltf_export.gd        방·캐릭터 glb 내보내기(Unity 연출용)
 screenshots/                      챕터·공간별 실행 캡처
 ```
 
