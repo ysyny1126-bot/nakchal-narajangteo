@@ -11,6 +11,7 @@ func _ready() -> void:
 	out_dir = ProjectSettings.globalize_path("res://screenshots/")
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	game.sound.muted = true
+	game.skip_scenarios = true
 	call_deferred("_run")
 
 
@@ -47,6 +48,18 @@ func _found(ids: Array) -> void:
 func _run() -> void:
 	await _wait(40)
 	await _shot("00_title")
+	# Chapter scenario cutscene frames.
+	game.skip_scenarios = false
+	game._play_scenario(1)
+	await _wait(200)
+	await _shot("ep01_00_scenario_city")
+	await _wait(200)
+	await _shot("ep01_00_scenario_office")
+	await _wait(400)
+	await _shot("ep01_00_scenario_mascots")
+	game._cutscene_skip = true
+	await _wait(20)
+	game.skip_scenarios = true
 	game._start_new_game()
 	await _wait(10)
 	await _shot("ep01_01_briefing")

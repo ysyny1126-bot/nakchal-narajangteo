@@ -38,6 +38,12 @@ var modal: Modal
 var title_layer: Control
 var sound: Node
 var game_active := false
+var cine_cam: Camera3D
+var in_cutscene := false
+## Directors set this to skip the chapter scenarios (captures / gameplay videos).
+var skip_scenarios := false
+var _cutscene_skip := false
+var _title_clock := 0.0
 var _last_target := ""
 var _bid := {}
 ## Set by the video director to walk Nareumi without keyboard input.
@@ -132,6 +138,12 @@ func _build_environment() -> void:
 	camera.far = 80.0
 	camera.current = true
 	add_child(camera)
+	cine_cam = Camera3D.new()
+	cine_cam.name = "CinematicCamera"
+	cine_cam.fov = 34.0
+	cine_cam.near = 0.05
+	cine_cam.far = 80.0
+	add_child(cine_cam)
 
 
 func _build_actors() -> void:
@@ -282,12 +294,15 @@ func _can_move() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	if title_layer.visible or in_cutscene:
+		return
 	var direction := Vector3.ZERO
 	if _can_move():
-		if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP): direction.z -= 1.0
-		if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN): direction.z += 1.0
-		if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT): direction.x -= 1.0
-		if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT): direction.x += 1.0
+		# Physical keys so WASD works while a Korean IME is active.
+		if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP): direction.z -= 1.0
+		if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN): direction.z += 1.0
+		if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT): direction.x -= 1.0
+		if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): direction.x += 1.0
 	if direction.length_squared() > 1.0:
 		direction = direction.normalized()
 	direction = direction.rotated(Vector3.UP, deg_to_rad(CAM_YAW))
@@ -330,7 +345,9 @@ func _update_companion(delta: float) -> void:
 			dali.face_point(target.global_position)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if title_layer.visible and not in_cutscene:
+		_animate_title(delta)
 	if not game_active:
 		return
 	_update_nearby()
@@ -369,7 +386,12 @@ func _marker_by_id(id: String) -> Node3D:
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
-	var key: int = event.keycode
+	var key: int = event.physical_keycode if event.physical_keycode != KEY_NONE else event.keycode
+	if in_cutscene:
+		if key in [KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_E]:
+			_cutscene_skip = true
+		get_viewport().set_input_as_handled()
+		return
 	if key == KEY_F11:
 		var mode := DisplayServer.window_get_mode()
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if mode == DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_FULLSCREEN)
@@ -410,10 +432,7 @@ func _show_title() -> void:
 	for child in title_layer.get_children():
 		child.queue_free()
 	title_layer.visible = true
-	var shade := ColorRect.new()
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	shade.color = Color(0.07, 0.12, 0.13, 0.35)
-	title_layer.add_child(shade)
+	_stage_title()
 	var card := PanelContainer.new()
 	card.add_theme_stylebox_override("panel", UI.shadow_panel(Color("#f8f4ebf5"), Color("#d8cfbf"), 18, 30))
 	card.position = Vector2(70, 150)
@@ -464,6 +483,8 @@ func _start_new_game() -> void:
 	_reset_state()
 	state.episode = 1
 	state.step = "city"
+	title_layer.visible = false
+	await _play_scenario(1)
 	_begin_play("city")
 	_add_log("EP01 시작 · ○○시청 구매 규격 검토실")
 	_write_save()
@@ -489,7 +510,153 @@ func _begin_play(next_room: String) -> void:
 	title_layer.visible = false
 	hud.visible = true
 	game_active = true
+	camera.current = true
 	_enter_room(next_room)
+
+
+# --- Title stage ------------------------------------------------------------
+
+func _stage_title() -> void:
+	_enter_room("title", false)
+	for marker in markers:
+		marker.visible = false
+	player.global_position = Vector3(1.75, 0.3, 0.25)
+	dali_body.global_position = Vector3(2.65, 0.3, 0.4)
+	narami.face_direction(Vector3(-0.35, 0, 1))
+	dali.face_direction(Vector3(-0.5, 0, 1))
+	narami.set_moving(false)
+	dali.set_moving(false)
+	cine_cam.fov = 34.0
+	cine_cam.global_position = Vector3(0.7, 1.55, 5.6)
+	cine_cam.look_at(Vector3(1.35, 0.95, 0.0))
+	cine_cam.current = true
+	_title_clock = 0.0
+
+
+func _animate_title(delta: float) -> void:
+	_title_clock += delta
+	var beat := int(_title_clock / 2.6)
+	if int((_title_clock - delta) / 2.6) != beat:
+		if beat % 2 == 0:
+			dali.play_action("cheer")
+			narami.play_action("point")
+		else:
+			narami.play_action("cheer")
+			dali.play_action("talk")
+	var floats: Node = world_root.get_node_or_null("Floating")
+	if floats:
+		for i in range(floats.get_child_count()):
+			var item := floats.get_child(i) as Node3D
+			item.position.y = item.get_meta("base_y", item.position.y) + sin(_title_clock * 1.4 + i) * 0.06
+			item.rotation.y += delta * (0.25 if i % 2 == 0 else -0.2)
+
+
+# --- Chapter scenario cutscenes ----------------------------------------------------
+
+func _play_scenario(ep: int) -> void:
+	if skip_scenarios:
+		return
+	in_cutscene = true
+	_cutscene_skip = false
+	title_layer.visible = false
+	game_active = false
+	hud.visible = false
+	modal.close()
+	var overlay := _cutscene_overlay(ep)
+	var subtitle: Dictionary = overlay.get_meta("parts")
+	for shot in Chapters.SCENARIO[ep]:
+		if _cutscene_skip:
+			break
+		_enter_room(shot.room, false)
+		for marker in markers:
+			marker.visible = false
+		var spots: Array = shot.mascots
+		player.global_position = spots[0]
+		dali_body.global_position = spots[1]
+		var cam_from: Vector3 = shot.cam[0]
+		var cam_to: Vector3 = shot.cam[1]
+		var look_from: Vector3 = shot.look[0]
+		var look_to: Vector3 = shot.look[1]
+		narami.face_point(cam_from)
+		dali.face_point(cam_from)
+		narami.set_moving(false)
+		dali.set_moving(false)
+		if shot.get("cheer", false):
+			narami.play_action("cheer")
+			dali.play_action("point")
+		cine_cam.fov = float(shot.get("fov", 34.0))
+		cine_cam.current = true
+		(subtitle.speaker as Label).text = shot.speaker
+		var line := subtitle.line as RichTextLabel
+		line.text = shot.text
+		line.visible_ratio = 0.0
+		var duration: float = shot.time
+		var tween := create_tween().set_parallel(true)
+		tween.tween_method(func(p: float) -> void:
+			var e := p * p * (3.0 - 2.0 * p)
+			cine_cam.global_position = cam_from.lerp(cam_to, e)
+			cine_cam.look_at(look_from.lerp(look_to, e)), 0.0, 1.0, duration)
+		tween.tween_property(line, "visible_ratio", 1.0, minf(duration * 0.55, 2.2))
+		var fade := overlay.get_node("Fade") as ColorRect
+		fade.color.a = 1.0
+		create_tween().tween_property(fade, "color:a", 0.0, 0.35)
+		sound.play("move")
+		var waited := 0.0
+		while waited < duration and not _cutscene_skip:
+			await get_tree().process_frame
+			waited += get_process_delta_time()
+		tween.kill()
+	overlay.queue_free()
+	camera.current = true
+	in_cutscene = false
+
+
+func _cutscene_overlay(ep: int) -> Control:
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.theme = UI.theme()
+	modal.get_parent().add_child(root)
+	for top in [true, false]:
+		var bar := ColorRect.new()
+		bar.color = Color("#0b1417")
+		bar.anchor_right = 1.0
+		if top:
+			bar.offset_bottom = 56
+		else:
+			bar.anchor_top = 1.0
+			bar.anchor_bottom = 1.0
+			bar.offset_top = -118
+		root.add_child(bar)
+	var data: Dictionary = Chapters.EP[ep]
+	var heading := UI.label("%s · %s  |  시나리오" % [data.code, data.title], 15, Color("#f3c9a3"), true)
+	heading.position = Vector2(28, 18)
+	root.add_child(heading)
+	var skip := HBoxContainer.new()
+	skip.add_theme_constant_override("separation", 6)
+	skip.position = Vector2(1080, 16)
+	skip.add_child(UI.keycap("Enter"))
+	skip.add_child(UI.label("건너뛰기", 12, Color("#c9d6d4")))
+	root.add_child(skip)
+	# Film-style subtitles inside the lower letterbox, so the scene stays clear.
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.position = Vector2(140, 614)
+	col.custom_minimum_size = Vector2(1000, 0)
+	root.add_child(col)
+	var speaker := UI.label("", 14, UI.ORANGE, true)
+	col.add_child(speaker)
+	var line := modal.rich("", 21, Color("#fbf6ea"))
+	line.custom_minimum_size = Vector2(1000, 0)
+	col.add_child(line)
+	var fade := ColorRect.new()
+	fade.name = "Fade"
+	fade.color = Color("#0b1417")
+	fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(fade)
+	root.set_meta("parts", {"speaker": speaker, "line": line})
+	return root
 
 
 func _show_briefing(ep: int) -> void:
@@ -990,6 +1157,8 @@ func _start_ep2() -> void:
 	state.quarters = []
 	state.merge(keep, true)
 	_add_log("EP02 시작 · 종합쇼핑몰")
+	title_layer.visible = false
+	await _play_scenario(2)
 	_begin_play("showroom")
 	_write_save()
 	_show_briefing(2)

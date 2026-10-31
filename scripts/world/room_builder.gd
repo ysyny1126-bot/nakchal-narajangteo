@@ -16,6 +16,7 @@ static func build(room: String, root: Node3D) -> Dictionary:
 		"city": return _city(root)
 		"review": return _review(root)
 		"showroom": return _showroom(root)
+		"title": return _title(root)
 		_: return _office(root)
 
 
@@ -371,3 +372,77 @@ static func _showroom(root: Node3D) -> Dictionary:
 			_hs("terminal", "분기 판매 단말", Vector3(3.6, 0, -0.35), Vector3(3.75, 2.15, -1.35)),
 		],
 	}
+
+
+# --- Title stage -----------------------------------------------------------------
+
+static func _title(root: Node3D) -> Dictionary:
+	# Soft blue gradient backdrop in the procurement-service palette.
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color("#bfe3ec"))
+	gradient.set_color(1, Color("#2c6f8f"))
+	var tex := GradientTexture2D.new()
+	tex.gradient = gradient
+	tex.fill_from = Vector2(0.5, 0.0)
+	tex.fill_to = Vector2(0.5, 1.0)
+	tex.width = 8
+	tex.height = 256
+	var back_mat := StandardMaterial3D.new()
+	back_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	back_mat.albedo_texture = tex
+	var back := MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(16, 8)
+	back.mesh = quad
+	back.material_override = back_mat
+	back.position = Vector3(1.0, 2.8, -3.2)
+	root.add_child(back)
+	# Floor and stage
+	Props.cylinder(root, Vector3(1.0, -0.05, 0), 8.0, 0.1, Props.mat(Color("#2f6a83"), 0.8))
+	Props.cylinder(root, Vector3(2.2, 0.15, 0.3), 1.55, 0.3, Props.mat(Color("#f4efe4"), 0.6))
+	Props.cylinder(root, Vector3(2.2, 0.305, 0.3), 1.45, 0.012, Props.mat(Color("#e07a35"), 0.5), 1.45)
+	Props.cylinder(root, Vector3(2.2, 0.31, 0.3), 1.33, 0.014, Props.mat(Color("#fbf6ec"), 0.6), 1.33)
+	# Big PPS-style emblem ring behind the mascots
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 1.25
+	torus.outer_radius = 1.45
+	torus.rings = 48
+	ring.mesh = torus
+	ring.material_override = Props.glow_mat(Color("#f0b04c"), 0.35)
+	ring.rotation_degrees.x = 90
+	ring.position = Vector3(2.2, 1.35, -1.4)
+	root.add_child(ring)
+	var label := Props.label(root, "나라장터 · 공공조달", Vector3(2.2, 2.95, -1.38), 44, Color("#fbf6ea"))
+	label.pixel_size = 0.0052
+	# Floating procurement props: documents, coins, a stamp and a gavel-like seal.
+	var floating := Node3D.new()
+	floating.name = "Floating"
+	root.add_child(floating)
+	var items := [
+		[Vector3(0.4, 1.9, -0.6), "doc", Color("#2f7d73")],
+		[Vector3(3.9, 2.1, -0.4), "doc", Color("#c4643b")],
+		[Vector3(3.6, 0.95, 0.9), "coin", Color("#f0c35a")],
+		[Vector3(0.75, 0.85, 1.1), "coin", Color("#f0c35a")],
+		[Vector3(1.0, 2.5, -1.0), "seal", Color("#c94f3f")],
+		[Vector3(3.35, 2.75, -1.0), "doc", Color("#3f6fb0")],
+	]
+	for item in items:
+		var holder := Node3D.new()
+		holder.position = item[0]
+		holder.set_meta("base_y", item[0].y)
+		floating.add_child(holder)
+		match item[1]:
+			"doc":
+				var d := Props.document(holder, Vector3.ZERO, Vector2(0.42, 0.3), item[2], "", 0.0, 2)
+				d.rotation = Vector3(1.1, 0.3, 0.2)
+			"coin":
+				var c := Props.cylinder(holder, Vector3.ZERO, 0.13, 0.03, Props.mat(item[2], 0.35, 0.6))
+				c.rotation = Vector3(1.2, 0.0, 0.3)
+				Props.label(holder, "₩", Vector3(0, 0.0, 0.0), 30, Color("#8a5a1c")).rotation = Vector3(1.2 - PI * 0.5, 0.0, 0.3)
+			"seal":
+				Props.cylinder(holder, Vector3.ZERO, 0.11, 0.14, Props.mat(item[2], 0.6))
+				Props.cylinder(holder, Vector3(0, 0.14, 0), 0.04, 0.16, Props.mat(Color("#6b4a32"), 0.7))
+	Props.model(root, "pottedPlant", Vector3(4.3, 0, -0.6), 0.0, 2.2, false)
+	Props.model(root, "books", Vector3(0.9, 0.31, 0.5), 0.4, 2.4, false)
+	return {"size": Vector2(10.0, 6.0), "spawn": Vector3(1.75, 0.3, 0.25), "npcs": {}, "hotspots": []}

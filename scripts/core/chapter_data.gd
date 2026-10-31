@@ -23,6 +23,43 @@ const EP := {
 	},
 }
 
+## Short in-engine scenario played before each chapter. Positions are world
+## coordinates inside the given room; `mascots` = [Nareumi, Dali].
+const SCENARIO := {
+	1: [
+		{"room": "city", "time": 5.0, "speaker": "○○시청 이 주무관",
+			"text": "본관 회의실에 쓸 [b]회의용 탁자 50개[/b]가 필요해요. 무엇을 살지, 누구나 공정하게 참여할 수 있게 정해야 해요.",
+			"cam": [Vector3(0.4, 6.4, 7.0), Vector3(0.9, 3.3, 4.3)], "look": [Vector3(0.3, 0.4, -0.6), Vector3(0.5, 0.7, -1.1)],
+			"mascots": [Vector3(-0.9, 0, 0.15), Vector3(-0.2, 0, 0.3)]},
+		{"room": "office", "time": 5.0, "speaker": "나라미 · 한빛퍼니처 대표",
+			"text": "나라장터에 [b]입찰공고[/b]가 올라왔어요! 공고문과 원가부터 확인하고 투찰가를 정해야겠어요.",
+			"cam": [Vector3(-2.6, 2.7, 4.0), Vector3(2.2, 2.6, 3.8)], "look": [Vector3(-1.6, 0.7, -1.4), Vector3(1.8, 0.7, -0.6)],
+			"mascots": [Vector3(-0.2, 0, -0.25), Vector3(0.5, 0, -0.1)]},
+		{"room": "review", "time": 4.6, "speaker": "조달청 윤서진 계약관",
+			"text": "가장 낮은 가격을 써도 끝이 아니에요. 약속을 지킬 수 있는지 [b]적격심사[/b]를 받아야 합니다.",
+			"cam": [Vector3(1.0, 3.6, 5.6), Vector3(1.3, 2.2, 3.1)], "look": [Vector3(1.2, 0.8, -1.4), Vector3(1.4, 0.9, -1.6)],
+			"mascots": [Vector3(0.3, 0, 0.1), Vector3(1.0, 0, 0.25)]},
+		{"room": "city", "time": 4.4, "speaker": "달이", "cheer": true, "fov": 30.0,
+			"text": "나라미, 조달 한 건을 처음부터 끝까지 [b]같이 해내 봐요![/b]",
+			"cam": [Vector3(-0.35, 1.3, 4.0), Vector3(-0.35, 1.05, 3.1)], "look": [Vector3(-0.35, 0.3, 0.9), Vector3(-0.35, 0.3, 0.9)],
+			"mascots": [Vector3(-0.7, 0, 0.9), Vector3(0.0, 0, 1.05)]},
+	],
+	2: [
+		{"room": "showroom", "time": 5.0, "speaker": "나라미 · 한빛퍼니처 대표",
+			"text": "이번엔 [b]나라장터 종합쇼핑몰[/b]! 공공기관이 여러 회사의 탁자를 비교해서 사요.",
+			"cam": [Vector3(-3.4, 3.0, 4.6), Vector3(2.2, 2.4, 3.8)], "look": [Vector3(-3.1, 0.7, -1.7), Vector3(1.8, 0.7, -1.7)],
+			"mascots": [Vector3(-2.2, 0, 0.6), Vector3(-1.5, 0, 0.75)]},
+		{"room": "showroom", "time": 4.6, "speaker": "○○시청 이 주무관",
+			"text": "[b]가격·납기·디자인[/b]을 함께 보고 점수를 매겨요. 할인 행사에 참여한 상품도 눈여겨보죠.",
+			"cam": [Vector3(2.6, 2.4, 3.4), Vector3(3.2, 1.9, 2.0)], "look": [Vector3(3.5, 1.2, -1.3), Vector3(3.7, 1.3, -1.35)],
+			"mascots": [Vector3(2.3, 0, 0.4), Vector3(3.0, 0, 0.55)]},
+		{"room": "showroom", "time": 4.4, "speaker": "달이", "cheer": true, "fov": 30.0,
+			"text": "좋은 상품을 공정한 가격으로! [b]1년 손익[/b]이 어떻게 달라지는지 지켜봐요.",
+			"cam": [Vector3(-1.6, 1.3, 4.3), Vector3(-1.6, 1.05, 3.3)], "look": [Vector3(-1.6, 0.3, 1.0), Vector3(-1.6, 0.3, 1.0)],
+			"mascots": [Vector3(-1.95, 0, 1.0), Vector3(-1.25, 0, 1.15)]},
+	],
+}
+
 const STAGE := {
 	"city": 0, "office": 1, "result": 2, "review": 3, "ep1done": 4,
 	"register": 0, "compare": 1, "sale": 2, "sales": 3, "ep2done": 4,

@@ -127,11 +127,9 @@ func _run() -> void:
 
 
 func _ep01() -> void:
-	game._start_new_game()
-	game.modal.close()
 	game.title_layer.visible = false
 	await _card("EP01 · 구매 규격과 입찰", "공정한 규격 → 원가 기반 투찰 → 사실대로 심사 통과", 2.6)
-	game._show_briefing(1)
+	await game._start_new_game()
 	await _wait(3.2)
 	await _press(0, 0.6)
 	_say("① 규격 검토", "요청서와 견본부터 확인해 무엇을 살지 파악해요")
@@ -193,12 +191,8 @@ func _ep02() -> void:
 	game.state.rep = 39
 	game.state.opinion = 56
 	game.title_layer.visible = false
-	game.hud.visible = true
-	game.game_active = true
-	game._start_ep2()
-	game.modal.close()
 	await _card("EP02 · 종합쇼핑몰", "가격·납기 균형 + 판매촉진으로 4분기 이익 최대화", 2.6)
-	game._show_briefing(2)
+	await game._start_ep2()
 	await _wait(3.2)
 	await _press(0, 0.6)
 	_say("① 상품 등록", "가격과 납기의 균형을 맞춘 균형형 탁자를 등록해요")
