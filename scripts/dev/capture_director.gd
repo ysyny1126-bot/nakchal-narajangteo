@@ -12,12 +12,23 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	game.sound.muted = true
 	game.skip_scenarios = true
+	game.skip_quiz = true
+	game.skip_events = true
 	call_deferred("_run")
 
 
 func _wait(frames: int = 20) -> void:
 	for i in range(frames):
 		await get_tree().process_frame
+
+
+## Ignore real keyboard/mouse input so stray keystrokes cannot change the run.
+func _input(_event: InputEvent) -> void:
+	get_viewport().set_input_as_handled()
+
+
+func _seconds(t: float) -> void:
+	await get_tree().create_timer(t).timeout
 
 
 func _shot(file: String) -> void:
@@ -148,6 +159,87 @@ func _run() -> void:
 	await _wait(10)
 	game._on_choice("quarter_next", {})
 	await _shot("ep02_07_profit_summary")
+	# Chapter wrap-up tools: quiz, alternatives, a random incident.
+	game._quiz = {"ep": 2, "index": 0, "correct": 0}
+	game._show_quiz_question()
+	await _shot("ep02_08_quiz")
+	game._answer_quiz(1)
+	await _shot("ep02_09_quiz_answer")
+	game._show_alternatives(2)
+	await _shot("ep02_10_alternatives")
+	game.state.ep2_event = "collusion"
+	game._show_event(2)
+	await _shot("ep02_11_random_event")
+	# EP03 · delivery, inspection, payment
+	game._close_modal()
+	game._start_ep3()
+	await _wait(10)
+	await _shot("ep03_01_briefing")
+	game._close_modal()
+	game.state.ep3_event = "material"
+	_place(Vector3(-0.2, 0, 1.7), Vector3(-0.3, 0, -1))
+	await _wait(50)
+	game.hud.clear_toasts()
+	await _shot("ep03_02_warehouse")
+	_found(["schedule"])
+	game.skip_events = false
+	_place(_stand("park"), Vector3(-0.3, 0, -1))
+	await _wait(25)
+	game._interact()
+	await _shot("ep03_03_event")
+	game._on_choice("ev3_swap", {})
+	await _shot("ep03_04_event_result")
+	game._on_choice("to_inspect", {})
+	_place(_stand("inspect"))
+	await _wait(25)
+	game._interact()
+	await _shot("ep03_05_inspection_fail")
+	game._on_choice("insp_fix", {})
+	await _shot("ep03_06_inspection_fixed")
+	game._close_modal()
+	_place(_stand("invoice"), Vector3(0.2, 0, -1))
+	await _wait(25)
+	game._interact()
+	await _shot("ep03_07_invoice")
+	game._on_choice("inv_exact", {})
+	await _shot("ep03_08_invoice_result")
+	game.state.quiz = {"1": 3, "2": 3, "3": 3}
+	game._on_choice("ep3_summary", {})
+	await _shot("ep03_09_summary")
+	# Ending + credits (best ending for the showcase).
+	(game.state.flags as Array).erase("대체자재")
+	game.state.inspect_result = "pass"
+	game.state.late_days = 0
+	game.state.risk = 4
+	game._go_ending()
+	await _seconds(1.6)
+	await _shot("ending_01_title")
+	await _seconds(6.0)
+	await _shot("ending_02_epilogue")
+	await _seconds(22.0)
+	await _shot("ending_03_credits")
+	game._cutscene_skip = true
+	await _seconds(0.8)
+	await _shot("ending_04_final")
+	var card: Image = await game._capture_share_card()
+	card.save_png(out_dir + "ending_05_share_card.png")
+	print("CAPTURE ending_05_share_card ", card.get_size())
+	game._show_collection()
+	await _shot("ending_06_collection")
+	game._close_modal()
+	game._show_terms()
+	game._show_term("delay")
+	await _shot("ui_glossary_term_card")
+	game._close_modal()
+	game._show_settings()
+	await _shot("ui_settings")
+	game._close_modal()
+	game.profile.settings.touch = "on"
+	game._begin_play("warehouse")
+	_place(Vector3(0.4, 0, 1.0), Vector3(0.3, 0, -1))
+	await _wait(40)
+	game.hud.clear_toasts()
+	await _shot("ui_touch_controls")
 	# Character close-up for art review (not the gameplay camera).
 	game._close_modal()
 	game.hud.visible = false

@@ -21,6 +21,8 @@ func _ready() -> void:
 	_layer = CanvasLayer.new()
 	_layer.layer = 30
 	add_child(_layer)
+	game.skip_quiz = true
+	game.skip_events = true
 	call_deferred("_run")
 
 

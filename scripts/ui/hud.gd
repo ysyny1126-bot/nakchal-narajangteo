@@ -11,6 +11,7 @@ const TOP_H := 40.0
 const BOTTOM_H := 50.0
 
 signal terms_requested
+signal settings_requested
 
 var _chapter_chip: Label
 var _room_label: Label
@@ -93,7 +94,13 @@ func _build_top() -> void:
 	terms.add_theme_font_size_override("font_size", 11)
 	terms.pressed.connect(func() -> void: terms_requested.emit())
 	row.add_child(terms)
-	row.add_child(UI.label("F11 전체화면", 10, Color("#7f9799")))
+	var settings := Button.new()
+	settings.text = "설정  O"
+	settings.focus_mode = Control.FOCUS_NONE
+	UI.style_button(settings, false)
+	settings.add_theme_font_size_override("font_size", 11)
+	settings.pressed.connect(func() -> void: settings_requested.emit())
+	row.add_child(settings)
 
 
 func _section(parent: VBoxContainer, title: String) -> VBoxContainer:

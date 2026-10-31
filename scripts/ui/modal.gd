@@ -4,9 +4,11 @@ extends ColorRect
 
 const UI = preload("res://scripts/ui/ui_theme.gd")
 const Hud = preload("res://scripts/ui/hud.gd")
+const Glossary = preload("res://scripts/core/glossary.gd")
 
 signal choice(id: String, option: Dictionary)
 signal closed
+signal term_clicked(id: String)
 
 var dismissable := true
 var card: PanelContainer
@@ -63,7 +65,11 @@ func open(opts: Dictionary) -> VBoxContainer:
 		var title := UI.wrap(UI.label(str(opts.title), 22, UI.INK, true))
 		_content.add_child(title)
 	if opts.has("body"):
-		_content.add_child(rich(str(opts.body), 14))
+		var body := rich(Glossary.link(str(opts.body)), 14)
+		body.mouse_filter = Control.MOUSE_FILTER_PASS
+		body.meta_clicked.connect(_on_meta)
+		body.meta_underlined = false
+		_content.add_child(body)
 	custom = VBoxContainer.new()
 	custom.add_theme_constant_override("separation", 8)
 	_content.add_child(custom)
@@ -82,8 +88,8 @@ func rich(text: String, size: int = 14, color: Color = UI.INK_SOFT) -> RichTextL
 	r.fit_content = true
 	r.scroll_active = false
 	r.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	r.add_theme_font_size_override("normal_font_size", size)
-	r.add_theme_font_size_override("bold_font_size", size)
+	r.add_theme_font_size_override("normal_font_size", UI.px(size))
+	r.add_theme_font_size_override("bold_font_size", UI.px(size))
 	r.add_theme_font_override("bold_font", UI.Props.font(true))
 	r.add_theme_color_override("default_color", color)
 	r.add_theme_constant_override("line_separation", 4)
@@ -123,6 +129,12 @@ func add_buttons(options: Array) -> void:
 		button.pressed.connect(_on_button.bind(i, option))
 		box.add_child(button)
 		_buttons.append(button)
+
+
+func _on_meta(meta: Variant) -> void:
+	var text := str(meta)
+	if text.begins_with("term:"):
+		term_clicked.emit(text.trim_prefix("term:"))
 
 
 func choose_index(index: int) -> void:

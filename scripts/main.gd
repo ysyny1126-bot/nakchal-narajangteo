@@ -13,9 +13,16 @@ const UI = preload("res://scripts/ui/ui_theme.gd")
 const Hud = preload("res://scripts/ui/hud.gd")
 const Modal = preload("res://scripts/ui/modal.gd")
 const SoundBank = preload("res://scripts/audio/sound_bank.gd")
+const Glossary = preload("res://scripts/core/glossary.gd")
+const Endings = preload("res://scripts/core/endings.gd")
+const Events = preload("res://scripts/core/events.gd")
+const TouchControls = preload("res://scripts/ui/touch_controls.gd")
 
 const SAVE_PATH := "user://nakchal-save.json"
-const SAVE_VERSION := 3
+const SAVE_VERSION := 4
+## Achievements, endings, glossary and settings survive new games.
+const PROFILE_PATH := "user://nakchal-profile.json"
+const LATE_RATE := 0.00075
 const MOVE_SPEED := 2.5
 const INTERACT_RANGE := 0.9
 const CAM_PITCH := 47.0
@@ -48,6 +55,17 @@ var _last_target := ""
 var _bid := {}
 ## Set by the video director to walk Nareumi without keyboard input.
 var autopilot := Vector3.ZERO
+## Directors skip the chapter quiz and random incidents to keep recordings stable.
+var skip_quiz := false
+var skip_events := false
+var touch: Control
+var profile := {"achievements": [], "endings": [], "terms": [], "settings": {"text": 1.0, "cutscene": 1.0, "music": 0.8, "sfx": 0.8, "touch": "auto"}}
+var _quiz := {}
+var _summary_ep := 0
+var _term_card: Control
+## Keeps the ending scene still while its final dialog is open.
+var ending_hold := false
+var _alt_from_ending := false
 
 
 func _ready() -> void:
@@ -55,9 +73,11 @@ func _ready() -> void:
 	_reset_state()
 	_build_environment()
 	_build_actors()
+	_load_profile()
 	_build_ui()
 	sound = SoundBank.new()
 	add_child(sound)
+	_apply_settings(false)
 	_load_save()
 	_enter_room("city", false)
 	_show_title()
@@ -98,6 +118,18 @@ func _reset_state() -> void:
 		"price_cut": false,
 		"price_decided": false,
 		"quarters": [],
+		"event_seed": randi() % 100000,
+		"ep2_event": "",
+		"ep2_event_choice": "",
+		"ep3_event": "",
+		"ep3_event_choice": "",
+		"contract": 0,
+		"late_days": 0,
+		"inspect_result": "",
+		"invoice_choice": "",
+		"ep3_checked": [],
+		"quiz": {},
+		"ending": "",
 	}
 
 
@@ -194,15 +226,27 @@ func _build_ui() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = UI.theme()
 	canvas.add_child(root)
-	hud = Hud.new()
-	root.add_child(hud)
-	hud.terms_requested.connect(_show_terms)
-	modal = Modal.new()
-	root.add_child(modal)
-	modal.choice.connect(_on_choice)
+	_make_hud(root)
+	touch = TouchControls.new()
+	touch.visible = false
+	root.add_child(touch)
+	touch.interact_pressed.connect(func() -> void: if _can_move(): _interact())
+	touch.terms_pressed.connect(func() -> void: if _can_move(): _show_terms())
 	title_layer = Control.new()
 	title_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(title_layer)
+	modal = Modal.new()
+	root.add_child(modal)
+	modal.choice.connect(_on_choice)
+	modal.term_clicked.connect(_show_term)
+
+
+func _make_hud(root: Control) -> void:
+	hud = Hud.new()
+	root.add_child(hud)
+	root.move_child(hud, 0)
+	hud.terms_requested.connect(_show_terms)
+	hud.settings_requested.connect(_show_settings)
 
 
 # --- Rooms and camera -------------------------------------------------------
@@ -294,7 +338,7 @@ func _can_move() -> bool:
 
 
 func _physics_process(delta: float) -> void:
-	if title_layer.visible or in_cutscene:
+	if title_layer.visible or in_cutscene or ending_hold:
 		return
 	var direction := Vector3.ZERO
 	if _can_move():
@@ -303,6 +347,8 @@ func _physics_process(delta: float) -> void:
 		if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN): direction.z += 1.0
 		if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT): direction.x -= 1.0
 		if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): direction.x += 1.0
+		if touch.visible:
+			direction += Vector3(touch.direction.x, 0, touch.direction.y)
 	if direction.length_squared() > 1.0:
 		direction = direction.normalized()
 	direction = direction.rotated(Vector3.UP, deg_to_rad(CAM_YAW))
@@ -348,6 +394,10 @@ func _update_companion(delta: float) -> void:
 func _process(delta: float) -> void:
 	if title_layer.visible and not in_cutscene:
 		_animate_title(delta)
+	var show_touch := _touch_enabled() and game_active and not in_cutscene and not modal.is_open() and not title_layer.visible
+	if touch.visible != show_touch:
+		touch.visible = show_touch
+		touch.reset()
 	if not game_active:
 		return
 	_update_nearby()
@@ -396,9 +446,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		var mode := DisplayServer.window_get_mode()
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if mode == DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_FULLSCREEN)
 		return
-	if title_layer.visible:
+	if title_layer.visible and not modal.is_open():
 		if key == KEY_1 or key == KEY_ENTER or key == KEY_KP_ENTER: _start_new_game()
 		elif key == KEY_2: _continue_game()
+		elif key == KEY_3: _show_settings()
+		elif key == KEY_4: _show_collection()
 		return
 	if modal.is_open():
 		if key == KEY_ESCAPE and modal.dismissable:
@@ -416,6 +468,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_interact()
 	elif key == KEY_T:
 		_show_terms()
+	elif key == KEY_O:
+		_show_settings()
 
 
 func _close_modal() -> void:
@@ -427,6 +481,7 @@ func _close_modal() -> void:
 
 func _show_title() -> void:
 	game_active = false
+	ending_hold = false
 	modal.close()
 	hud.visible = false
 	for child in title_layer.get_children():
@@ -448,6 +503,7 @@ func _show_title() -> void:
 	eps.add_theme_constant_override("separation", 8)
 	eps.add_child(UI.chip("EP01 구매 규격과 입찰", UI.NAVY, Color.WHITE, 12))
 	eps.add_child(UI.chip("EP02 종합쇼핑몰", Color("#2f6f80"), Color.WHITE, 12))
+	eps.add_child(UI.chip("EP03 납품·검수", Color("#3d5236"), Color.WHITE, 12))
 	stack.add_child(eps)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -469,6 +525,17 @@ func _show_title() -> void:
 	cont.add_theme_font_size_override("font_size", 16)
 	cont.pressed.connect(_continue_game)
 	row.add_child(cont)
+	var row2 := HBoxContainer.new()
+	row2.add_theme_constant_override("separation", 10)
+	stack.add_child(row2)
+	for item in [["3   설정", _show_settings], ["4   엔딩·업적 도감", _show_collection]]:
+		var b := Button.new()
+		b.text = item[0]
+		b.custom_minimum_size = Vector2(0, 38)
+		b.focus_mode = Control.FOCUS_NONE
+		UI.style_button(b, false)
+		b.pressed.connect(item[1])
+		row2.add_child(b)
 	var keys := HBoxContainer.new()
 	keys.add_theme_constant_override("separation", 4)
 	for pair in [["WASD", "이동"], ["E", "조사"], ["1~4", "선택"], ["Esc", "닫기"], ["F11", "전체화면"]]:
@@ -477,6 +544,7 @@ func _show_title() -> void:
 	stack.add_child(keys)
 	if int(state.episode) > 0:
 		stack.add_child(UI.label("저장된 진행: %s · %s" % [Chapters.EP[int(state.episode)].code, Chapters.objective(state)], 11, UI.MUTED))
+	stack.add_child(UI.label("엔딩 %d/%d · 업적 %d/%d · 용어 도감 %d/%d" % [(profile.endings as Array).size(), Endings.ENDINGS.size(), (profile.achievements as Array).size(), Endings.ACHIEVEMENTS.size(), (profile.terms as Array).size(), Glossary.TERMS.size()], 11, UI.NAVY, true))
 
 
 func _start_new_game() -> void:
@@ -504,9 +572,11 @@ func _continue_game() -> void:
 			if step == "sales": _next_quarter()
 		"ep1done": _show_ep1_summary()
 		"ep2done": _show_ep2_summary()
+		"ep3done": _show_ep3_summary()
 
 
 func _begin_play(next_room: String) -> void:
+	ending_hold = false
 	title_layer.visible = false
 	hud.visible = true
 	game_active = true
@@ -590,7 +660,7 @@ func _play_scenario(ep: int) -> void:
 		var line := subtitle.line as RichTextLabel
 		line.text = shot.text
 		line.visible_ratio = 0.0
-		var duration: float = shot.time
+		var duration: float = float(shot.time) * float(profile.settings.cutscene)
 		var tween := create_tween().set_parallel(true)
 		tween.tween_method(func(p: float) -> void:
 			var e := p * p * (3.0 - 2.0 * p)
@@ -616,6 +686,7 @@ func _cutscene_overlay(ep: int) -> Control:
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
 	root.theme = UI.theme()
+	root.gui_input.connect(_on_cutscene_click)
 	modal.get_parent().add_child(root)
 	for top in [true, false]:
 		var bar := ColorRect.new()
@@ -634,9 +705,9 @@ func _cutscene_overlay(ep: int) -> Control:
 	root.add_child(heading)
 	var skip := HBoxContainer.new()
 	skip.add_theme_constant_override("separation", 6)
-	skip.position = Vector2(1080, 16)
+	skip.position = Vector2(1010, 16)
 	skip.add_child(UI.keycap("Enter"))
-	skip.add_child(UI.label("건너뛰기", 12, Color("#c9d6d4")))
+	skip.add_child(UI.label("건너뛰기 · 화면 터치", 12, Color("#c9d6d4")))
 	root.add_child(skip)
 	# Film-style subtitles inside the lower letterbox, so the scene stays clear.
 	var col := VBoxContainer.new()
@@ -701,6 +772,7 @@ func _interact() -> void:
 		"office": _interact_office(nearby.id)
 		"review": _interact_review(nearby.id)
 		"showroom": _interact_showroom(nearby.id)
+		"warehouse": _interact_warehouse(nearby.id)
 
 
 func _mark_found(id: String, message: String) -> void:
@@ -723,7 +795,7 @@ func _refresh() -> void:
 	for marker in markers:
 		var found: Array = state.found
 		var status := "open"
-		if found.has(marker.id) or (marker.id == "catalog" and not str(state.product).is_empty()) or (marker.id == "buyer" and state.step in ["sale", "sales", "ep2done"]):
+		if found.has(marker.id) or (marker.id == "catalog" and not str(state.product).is_empty()) or (marker.id == "buyer" and state.step in ["sale", "sales", "ep2done"]) or (marker.id == "park" and state.step in ["inspect", "invoice", "ep3done"]) or (marker.id == "inspect" and state.step in ["invoice", "ep3done"]) or (marker.id == "invoice" and state.step == "ep3done"):
 			status = "done"
 		elif not Chapters.lock_reason(state, marker.id).is_empty():
 			status = "locked"
@@ -1116,7 +1188,7 @@ func _resolve_review(choice: String) -> void:
 		body = "발급 기관 확인 결과 실적 서류가 사실과 달랐습니다. 낙찰자 결정에서 제외되고 [b]입찰참가자격 제한[/b] 대상이 됩니다.\n\n(게임에서는 리스크 +30, 평판 −20으로 표현합니다.)"
 		chips = _apply({"risk": 30, "rep": -20, "opinion": -6})
 		_add_log("허위 서류 적발 · 실격")
-		buttons = [{"label": "EP01을 처음부터 다시", "id": "restart_ep1"}, {"label": "결과를 기록하고 EP01 정리로", "id": "ep1_summary", "primary": false}]
+		buttons = [{"label": "제재 엔딩 보기", "id": "ending_now", "accent": UI.RED}, {"label": "EP01을 처음부터 다시", "id": "restart_ep1", "primary": false}, {"label": "결과를 기록하고 EP01 정리로", "id": "ep1_summary", "primary": false}]
 	else:
 		title = "심사 포기"
 		body = "1순위가 정당한 이유 없이 심사를 포기하면 다른 업체와 기관에 피해가 생기고, 제재 대상이 될 수 있습니다.\n\n(게임에서는 평판 −8, 리스크 +6으로 표현합니다.)"
@@ -1137,7 +1209,10 @@ func _show_ep1_summary() -> void:
 	var bid_text := "-" if r.is_empty() else "%s원 · %s" % [Rules.fmt(int(r.bid)), "1순위" if int(r.rank) == 1 else ("%d순위" % int(r.rank) if int(r.rank) > 0 else "하한 미달")]
 	var review: String = {"review_truth": "사실대로 제출 · %s" % ("통과" if bool(state.review.get("pass", false)) else "미달"), "review_false": "허위 서류 · 실격", "review_giveup": "심사 포기"}.get(str(state.review_choice), "심사 전 종료")
 	var body := "[b]내 선택 기록[/b]\n· 구매 규격: %s\n· 투찰: %s (시도 %d회)\n· 적격심사: %s\n\n[b]오늘 배운 조달 용어[/b]\n· 기초금액 — 예정가격을 정하는 기준 금액\n· 복수예비가격 — 기초금액 ±2%%에서 만든 15개 가격\n· 예정가격 — 많이 선택된 4개 예비가격의 평균\n· 낙찰하한율 — 덤핑을 막기 위한 최저 비율\n· 적격심사 — 가격 외 이행 능력을 보는 심사" % [spec, bid_text, int(state.bid_attempt) + 1, review]
-	modal.open({"kicker": "EP01 완료", "title": "조달 한 건의 흐름을 마쳤어요", "body": body, "dismissable": false, "accent": UI.NAVY, "buttons": [{"label": "EP02 종합쇼핑몰 시작", "id": "start_ep2"}, {"label": "EP01 다시 하기", "id": "restart_ep1", "primary": false}]})
+	_summary_ep = 1
+	var custom := modal.open({"kicker": "EP01 완료", "title": "조달 한 건의 흐름을 마쳤어요", "body": body, "dismissable": false, "accent": UI.NAVY})
+	_grade_row(custom, 1)
+	modal.add_buttons([{"label": "EP02 종합쇼핑몰 시작", "id": "start_ep2"}, {"label": "다른 길이었다면? (선택별 결과 비교)", "id": "alt_1", "primary": false}, {"label": "EP01 다시 하기", "id": "restart_ep1", "primary": false}])
 	sound.play("success")
 
 
@@ -1155,6 +1230,8 @@ func _start_ep2() -> void:
 	state.price_cut = false
 	state.price_decided = false
 	state.quarters = []
+	state.ep2_event = Events.pick(Events.EP2, int(state.event_seed))
+	state.ep2_event_choice = ""
 	state.merge(keep, true)
 	_add_log("EP02 시작 · 종합쇼핑몰")
 	title_layer.visible = false
@@ -1263,7 +1340,19 @@ func _show_sale_choice() -> void:
 func _next_quarter() -> void:
 	var quarters: Array = state.quarters
 	if quarters.size() >= 4:
-		_show_ep2_summary()
+		_finish_chapter(2)
+		return
+	if quarters.size() == 1 and not skip_events and str(state.ep2_event_choice).is_empty():
+		_show_event(2)
+		return
+	var flags: Array = state.flags
+	if quarters.size() == 3 and flags.has("담합") and not flags.has("담합적발"):
+		flags.append("담합적발")
+		var penalty := _apply({"money": -6000000, "risk": 10, "rep": -6})
+		_add_log("담합 적발 · 과징금")
+		_write_save()
+		modal.open({"kicker": "시장 변화 · 4분기", "title": "공정거래 조사에서 담합이 드러났어요", "body": "대성오피스와 가격을 맞춘 사실이 확인되어 [b]과징금[/b]이 부과되었습니다. 입찰참가자격 제한 심의도 진행됩니다.", "deltas": penalty, "assumption": true, "dismissable": false, "accent": UI.RED, "buttons": [{"label": "4분기 진행", "id": "quarter_next"}]})
+		_feedback(false)
 		return
 	if quarters.size() == 2 and not bool(state.price_decided):
 		modal.open({"kicker": "시장 변화 · 3분기", "title": "원자재 가격이 내려갔습니다", "body": "목재 가격이 하락했다는 소식입니다. 종합쇼핑몰 등록 가격을 다시 검토할 수 있습니다.\n\n· 3% 인하: 경쟁력이 오르고 공정한 가격 반영\n· 유지: 개당 이익은 크지만 가격 점검 리스크가 오릅니다 (게임적 복선)", "assumption": true, "dismissable": false, "buttons": [
@@ -1312,9 +1401,423 @@ func _show_ep2_summary() -> void:
 	_refresh()
 	var quarters: Array = state.quarters
 	var p: Dictionary = Rules.PRODUCTS[str(state.product)] if not str(state.product).is_empty() else {"name": "-"}
-	var custom := modal.open({"kicker": "EP02 완료 · 4분기 손익", "title": "%s · 상생세일 %s · 가격 %s" % [p.name, "참여" if state.sale else "미참여", "인하" if state.price_cut else "유지"], "assumption": true, "dismissable": false, "width": 660, "accent": UI.NAVY})
+	var ev := Events.option(Events.EP2, str(state.ep2_event), str(state.ep2_event_choice))
+	var custom := modal.open({"kicker": "EP02 완료 · 4분기 손익", "title": "%s · 상생세일 %s · 가격 %s" % [p.name, "참여" if state.sale else "미참여", "인하" if state.price_cut else "유지"], "body": "돌발 상황: %s" % (str(ev.get("log", "없음")) if not ev.is_empty() else "없음"), "assumption": true, "dismissable": false, "width": 660, "accent": UI.NAVY})
 	custom.add_child(_quarter_table(quarters))
-	custom.add_child(UI.label("다른 선택이었다면? (같은 시장 가정에서 4분기 이익 합계)", 12, UI.ORANGE, true))
+	_grade_row(custom, 2)
+	custom.add_child(UI.wrap(UI.label("다수공급자계약(MAS)은 여러 공급자의 상품을 비교해 구매할 수 있게 한 계약 방식입니다. 실제 제도와 수치는 게임에서 단순화했습니다.", 11, UI.MUTED)))
+	_summary_ep = 2
+	modal.add_buttons([{"label": "EP03 납품·검수 시작", "id": "start_ep3"}, {"label": "다른 길이었다면? (선택별 결과 비교)", "id": "alt_2", "primary": false}, {"label": "용어 도감 보기", "id": "terms", "primary": false}])
+	_feedback(true)
+
+
+# --- EP03 · Delivery, inspection and payment ------------------------------------
+
+func _start_ep3() -> void:
+	state.episode = 3
+	state.step = "deliver"
+	state.found = []
+	state.ep3_event = Events.pick(Events.EP3, int(state.event_seed) / 7)
+	state.ep3_event_choice = ""
+	state.late_days = 0
+	state.inspect_result = ""
+	state.invoice_choice = ""
+	state.ep3_checked = []
+	state.contract = int((state.bid as Dictionary).get("bid", 0)) if Endings.won_ep1(state) else 36000000
+	_add_log("EP03 시작 · 납품 검수장")
+	title_layer.visible = false
+	await _play_scenario(3)
+	_begin_play("warehouse")
+	_write_save()
+	_show_briefing(3)
+
+
+func _check_ep3(id: String) -> void:
+	var checked: Array = state.ep3_checked
+	if not checked.has(id):
+		checked.append(id)
+
+
+func _interact_warehouse(id: String) -> void:
+	var contract := int(state.contract)
+	match id:
+		"schedule":
+			var origin := "EP01에서 낙찰받은 ○○시청 계약" if Endings.won_ep1(state) else "다른 기관의 납품요구 계약 (EP01 미낙찰 시 게임 가정)"
+			modal.open({"kicker": "조사 · 납품 일정표", "title": "납기까지 D-10", "body": "· 계약: %s\n· 계약금액 [b]%s원[/b] · 회의용 탁자 50개\n· 납기: 10일 안에 본관 3층 설치까지\n· 지체상금: 늦어진 날마다 계약금액의 [b]0.075%%[/b]\n· 검수 합격 후 대금 청구 → 5일 안에 지급\n\n문제가 생기면 [b]미리 알리고 협의[/b]하는 것이 계약 이행의 원칙입니다." % [origin, Rules.fmt(contract)], "assumption": true, "buttons": [{"label": "일정 확인", "id": "close"}]})
+			_check_ep3("schedule")
+			_mark_found("schedule", "납품 일정표: 납기 D-10·지체상금률 확인")
+		"park":
+			if state.step in ["deliver", "event"]:
+				state.step = "event"
+				if skip_events:
+					_resolve_event(3, str((Events.EP3[str(state.ep3_event)].options[0] as Dictionary).id))
+				else:
+					_show_event(3)
+			else:
+				modal.open({"kicker": "대화 · 박 실장", "title": "\"출고는 끝났어요!\"", "body": "박 실장이 엄지를 들어 보입니다. \"이제 검수만 잘 받으면 돼요.\"", "buttons": [{"label": "닫기", "id": "close"}]})
+		"inspect":
+			if state.step == "inspect":
+				_show_inspection()
+			else:
+				modal.open({"kicker": "검수 완료", "title": "검수 합격 처리됐어요", "body": "최 검수관: \"대금 청구 단말에서 청구하시면 됩니다.\"", "buttons": [{"label": "닫기", "id": "close"}]})
+		"invoice":
+			if state.step == "invoice":
+				_show_invoice()
+			else:
+				_show_ep3_summary()
+		"warranty":
+			modal.open({"kicker": "조사 · 하자보수 안내 (선택)", "title": "납품 뒤에도 책임은 이어져요", "body": "· 하자보수 기간: 납품 후 [b]1년[/b]\n· 하자보수보증금: 계약금액의 3%% (%s원)\n· 기간 안에 생긴 결함은 업체가 무상으로 고칩니다.\n\n납품이 끝이 아니라, 쓰는 동안 품질을 책임지는 것까지가 계약입니다." % Rules.fmt(int(contract * 0.03)), "assumption": true, "buttons": [{"label": "안내 확인", "id": "close"}]})
+			_check_ep3("warranty")
+			_mark_found("warranty", "하자보수: 1년·보증금 3% 확인")
+
+
+## Random incident for EP02 (after Q1) or EP03 (talking to Park).
+func _show_event(ep: int) -> void:
+	var pool: Dictionary = Events.EP2 if ep == 2 else Events.EP3
+	var ev: Dictionary = pool[str(state["ep%d_event" % ep])]
+	var options: Array = (ev.options as Array).duplicate()
+	# Stable per-playthrough order so the "right" answer is not always first.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(state.event_seed) + ep
+	for i in range(options.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp = options[i]
+		options[i] = options[j]
+		options[j] = tmp
+	var buttons := []
+	for o in options:
+		buttons.append({"label": o.label, "id": "ev%d_%s" % [ep, o.id], "primary": false})
+	modal.open({"kicker": ev.kicker, "title": ev.title, "body": ev.body, "dismissable": false, "accent": UI.RED, "buttons": buttons})
+	sound.play("locked")
+	dali.play_action("talk")
+
+
+func _resolve_event(ep: int, option_id: String) -> void:
+	var pool: Dictionary = Events.EP2 if ep == 2 else Events.EP3
+	var o := Events.option(pool, str(state["ep%d_event" % ep]), option_id)
+	if o.is_empty():
+		return
+	state["ep%d_event_choice" % ep] = option_id
+	var deltas: Dictionary = (o.get("deltas", {}) as Dictionary).duplicate()
+	if o.has("money"):
+		deltas["money"] = int(o.money)
+	var chips := _apply(deltas)
+	if o.has("flag"):
+		(state.flags as Array).append(o.flag)
+	if o.has("late_days"):
+		state.late_days = int(state.late_days) + int(o.late_days)
+	_add_log(str(o.get("log", "")))
+	var grade := str(o.get("grade", "ok"))
+	var button := {"label": "다음 분기 진행", "id": "quarter_next"}
+	if ep == 3:
+		state.step = "inspect"
+		button = {"label": "출고 완료 → 검수대로", "id": "to_inspect"}
+	_write_save()
+	var accent := UI.GREEN if grade == "good" else (UI.RED if grade == "bad" else UI.GOLD)
+	modal.open({"kicker": "결과 · 돌발 상황", "title": o.title, "body": o.body, "deltas": chips, "assumption": true, "dismissable": false, "accent": accent, "buttons": [button]})
+	_feedback(grade != "bad")
+
+
+func _ep3_issues() -> Array:
+	var issues := []
+	var flags: Array = state.flags
+	if flags.has("대체자재"):
+		issues.append(["목재가 규격서의 친환경 인증 자재와 달라요", 1500000])
+	if flags.has("결함출고"):
+		issues.append(["상판 흠집 5개가 발견됐어요", 500000])
+	return issues
+
+
+func _show_inspection() -> void:
+	var issues := _ep3_issues()
+	var late := int(state.late_days)
+	var late_note := "" if late == 0 else "\n\n· 납품이 [b]%d일 늦었습니다[/b] → 대금 청구 때 지체상금이 공제됩니다." % late
+	if issues.is_empty():
+		state.inspect_result = "pass"
+		state.step = "invoice"
+		_add_log("검수 한 번에 합격")
+		var chips := _apply({"rep": 3})
+		_write_save()
+		modal.open({"kicker": "검수 결과", "title": "검수 합격!", "body": "최 검수관이 수량 50개, 치수, 하중 시험, 모서리 마감, 친환경 인증서를 차례로 확인했습니다.\n\n\"규격서대로 정확하네요. 합격입니다.\"%s" % late_note, "deltas": chips, "accent": UI.GREEN, "dismissable": false, "buttons": [{"label": "대금 청구 단말로", "id": "close"}]})
+		_feedback(true)
+		return
+	var lines := ""
+	for issue in issues:
+		lines += "· [color=#c2493d][b]%s[/b][/color]\n" % issue[0]
+	modal.open({"kicker": "검수 결과 · 불합격", "title": "규격과 다른 점이 발견됐어요", "body": "최 검수관: \"규격서와 비교해 보니 맞지 않는 부분이 있습니다.\"\n\n%s%s\n어떻게 할까요?" % [lines, late_note], "dismissable": false, "accent": UI.RED, "buttons": [
+		{"label": "\"이 정도는 괜찮잖아요\" 이의를 제기한다", "id": "insp_argue", "primary": false},
+		{"label": "규격대로 교체하고 다시 검수받는다", "id": "insp_fix", "primary": false},
+		{"label": "\"잘 좀 봐주세요\" 상품권 봉투를 건넨다", "id": "insp_gift", "primary": false},
+	]})
+	_feedback(false)
+
+
+func _resolve_inspection(choice: String) -> void:
+	var cost := 0
+	for issue in _ep3_issues():
+		cost += int(issue[1])
+	var title := ""
+	var body := ""
+	var chips := []
+	var good := false
+	var buttons := [{"label": "대금 청구 단말로", "id": "close"}]
+	match choice:
+		"insp_fix":
+			state.inspect_result = "fixed"
+			state.late_days = int(state.late_days) + 2
+			title = "교체 후 재검수 합격"
+			body = "규격에 맞는 자재로 바꿔 다시 검수를 받았습니다. 비용과 이틀이 더 들었지만 [b]계약대로[/b] 납품했습니다."
+			chips = _apply({"money": -cost, "rep": -1})
+			good = true
+			_add_log("검수 불합격 → 교체 후 합격")
+		"insp_gift":
+			state.inspect_result = "gift"
+			(state.flags as Array).append("금품제공")
+			title = "청렴계약 위반 · 신고 접수"
+			body = "최 검수관이 봉투를 돌려주며 감사부서에 신고했습니다. 금품 제공은 [b]청렴계약[/b] 위반으로 계약 해제와 [b]입찰참가자격 제한[/b] 대상입니다.\n\n(게임에서는 리스크 +35, 평판 −20으로 표현합니다.)"
+			chips = _apply({"risk": 35, "rep": -20, "opinion": -6, "money": -cost})
+			_add_log("검수관에게 금품 제공 → 신고")
+			buttons = [{"label": "제재 엔딩 보기", "id": "ending_now", "accent": UI.RED}, {"label": "교체 후 진행 (기록은 남음)", "id": "close", "primary": false}]
+		_:
+			state.inspect_result = "argue"
+			state.late_days = int(state.late_days) + 3
+			title = "다시 재도 결과는 같았어요"
+			body = "재측정에서도 불합격이었습니다. 결국 교체했고, 다투느라 [b]사흘[/b]이 더 늦어졌습니다."
+			chips = _apply({"money": -cost, "rep": -4})
+			_add_log("검수 이의 제기 → 지연 후 교체")
+	state.step = "invoice"
+	_write_save()
+	modal.open({"kicker": "검수 결과", "title": title, "body": body, "deltas": chips, "assumption": true, "dismissable": false, "accent": UI.GREEN if good else UI.RED, "buttons": buttons})
+	_feedback(good)
+
+
+func _late_penalty() -> int:
+	return int(round(float(state.contract) * LATE_RATE * int(state.late_days) / 1000.0)) * 1000
+
+
+func _show_invoice() -> void:
+	var contract := int(state.contract)
+	var penalty := _late_penalty()
+	var body := "· 계약금액 [b]%s원[/b]\n· 지체상금 %d일 × 0.075%% = [b]%s원[/b]\n· 청구할 금액 [b]%s원[/b]\n\n박 실장: \"대표님, 운송비가 생각보다 더 나왔어요. 200만 원쯤 얹어서 청구해도 모를 거예요.\"" % [Rules.fmt(contract), int(state.late_days), Rules.fmt(penalty), Rules.fmt(contract - penalty)]
+	modal.open({"kicker": "업무 · 대금 청구", "title": "얼마를 청구할까요?", "body": body, "assumption": true, "buttons": [
+		{"label": "운송비 200만 원을 얹어 청구한다", "id": "inv_inflate", "primary": false},
+		{"label": "계약대로 정확한 금액만 청구한다", "id": "inv_exact", "primary": false},
+	]})
+
+
+func _resolve_invoice(choice: String) -> void:
+	var penalty := _late_penalty()
+	# EP01's profit was booked at contract time; an assumed replacement order pays out here.
+	var bonus := 0 if Endings.won_ep1(state) else 4000000
+	var exact := choice == "inv_exact"
+	state.invoice_choice = "exact" if exact else "inflate"
+	var title := ""
+	var body := ""
+	var chips := []
+	var buttons := [{"label": "EP03 결과 정리", "id": "ep3_summary", "accent": UI.GREEN if exact else UI.ORANGE}]
+	var note := "" if penalty == 0 else "\n· 지체상금 %s원이 공제됐습니다." % Rules.fmt(penalty)
+	if exact:
+		title = "대금 지급 완료!"
+		body = "검수 합격 5일 만에 대금 [b]%s원[/b]이 들어왔습니다.%s%s" % [Rules.fmt(int(state.contract) - penalty), note, "" if bonus == 0 else "\n· 이번 계약 이익 400만 원이 자금에 반영됩니다."]
+		chips = _apply({"money": bonus - penalty, "rep": 3, "opinion": 2})
+		_add_log("대금 정확히 청구 · 지급 완료")
+	else:
+		(state.flags as Array).append("과다청구")
+		title = "과다 청구 적발"
+		body = "정산 검토에서 운송비 영수증과 청구액이 다르다는 사실이 드러났습니다. 부풀린 금액은 환수되고 [b]입찰참가자격 제한[/b] 대상이 됩니다.%s" % note
+		chips = _apply({"money": bonus - penalty, "risk": 30, "rep": -15})
+		_add_log("대금 과다 청구 적발")
+		buttons.push_front({"label": "제재 엔딩 보기", "id": "ending_now", "accent": UI.RED})
+	state.step = "ep3done"
+	_write_save()
+	_refresh()
+	modal.open({"kicker": "대금 청구 결과", "title": title, "body": body, "deltas": chips, "assumption": true, "dismissable": false, "accent": UI.GREEN if exact else UI.RED, "buttons": buttons})
+	_feedback(exact)
+
+
+func _show_ep3_summary() -> void:
+	state.step = "ep3done"
+	_write_save()
+	_refresh()
+	var ev := Events.option(Events.EP3, str(state.ep3_event), str(state.ep3_event_choice))
+	var inspect: String = {"pass": "한 번에 합격", "fixed": "불합격 → 교체 후 합격", "argue": "이의 제기 → 지연 후 교체", "gift": "금품 제공 → 신고"}.get(str(state.inspect_result), "-")
+	var invoice: String = {"exact": "정확한 금액 청구", "inflate": "과다 청구 → 적발"}.get(str(state.invoice_choice), "-")
+	var body := "[b]내 선택 기록[/b]\n· 돌발 상황: %s\n· 검수: %s\n· 납품 지연: %d일 (지체상금 %s원)\n· 대금 청구: %s" % [str(ev.get("log", "-")), inspect, int(state.late_days), Rules.fmt(_late_penalty()), invoice]
+	_summary_ep = 3
+	var custom := modal.open({"kicker": "EP03 완료", "title": "계약을 끝까지 이행했어요", "body": body, "dismissable": false, "accent": UI.NAVY})
+	_grade_row(custom, 3)
+	modal.add_buttons([{"label": "엔딩 보기", "id": "ending_go", "accent": UI.GOLD}, {"label": "다른 길이었다면? (선택별 결과 비교)", "id": "alt_3", "primary": false}])
+	sound.play("success")
+
+
+# --- Chapter wrap-up: quiz, grade, alternatives -------------------------------------
+
+func _finish_chapter(ep: int) -> void:
+	if skip_quiz or (state.quiz as Dictionary).has(str(ep)):
+		_show_summary(ep)
+	else:
+		_quiz = {"ep": ep, "index": 0, "correct": 0}
+		_show_quiz_question()
+
+
+func _show_summary(ep: int) -> void:
+	match ep:
+		1: _show_ep1_summary()
+		2: _show_ep2_summary()
+		_: _show_ep3_summary()
+
+
+func _show_quiz_question() -> void:
+	var ep := int(_quiz.ep)
+	var questions: Array = Glossary.QUIZ[ep]
+	var item: Dictionary = questions[int(_quiz.index)]
+	var buttons := []
+	for i in range((item.options as Array).size()):
+		buttons.append({"label": item.options[i], "id": "quiz_a%d" % i, "primary": false})
+	modal.open({"kicker": "%s 확인 퀴즈 · %d / %d" % [Chapters.EP[ep].code, int(_quiz.index) + 1, questions.size()], "title": item.q, "body": "번호 키를 누르거나 답을 클릭하세요. 정답 수는 챕터 등급(20점)에 반영돼요.", "dismissable": false, "accent": UI.BLUE, "buttons": buttons})
+	sound.play("open")
+
+
+func _answer_quiz(choice: int) -> void:
+	var ep := int(_quiz.ep)
+	var questions: Array = Glossary.QUIZ[ep]
+	if int(_quiz.index) >= questions.size():
+		return
+	var item: Dictionary = questions[int(_quiz.index)]
+	var right := choice == int(item.answer)
+	if right:
+		_quiz.correct = int(_quiz.correct) + 1
+	_quiz.index = int(_quiz.index) + 1
+	var last := int(_quiz.index) >= questions.size()
+	var tail := ""
+	if last:
+		(state.quiz as Dictionary)[str(ep)] = int(_quiz.correct)
+		_write_save()
+		tail = "\n\n[b]%d / %d 정답[/b]%s" % [int(_quiz.correct), questions.size(), " · 만점이에요!" if int(_quiz.correct) == questions.size() else ""]
+	modal.open({"kicker": "정답!" if right else "아쉬워요", "title": "정답 · %s" % item.options[int(item.answer)], "body": str(item.explain) + tail, "dismissable": false, "accent": UI.GREEN if right else UI.RED, "buttons": [{"label": "정리 화면 보기" if last else "다음 문제", "id": "quiz_next"}]})
+	_feedback(right)
+
+
+func _grade_row(custom: VBoxContainer, ep: int) -> void:
+	var score := Endings.chapter_score(state, ep)
+	var g := Endings.grade(score)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var badge := UI.chip("  %s  " % g, Endings.grade_color(g), Color.WHITE, 28)
+	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(badge)
+	var col := VBoxContainer.new()
+	col.add_child(UI.label("챕터 등급 %s · %.0f점" % [g, score], 15, UI.INK, true))
+	var quiz: Dictionary = state.quiz
+	col.add_child(UI.label("선택 80점 + 확인 퀴즈 20점 (퀴즈 %s)" % (("%d/3" % int(quiz[str(ep)])) if quiz.has(str(ep)) else "미응시"), 11, UI.MUTED))
+	row.add_child(col)
+	custom.add_child(row)
+
+
+func _delta_text(o: Dictionary) -> String:
+	var parts := []
+	var names := {"rep": "평판", "risk": "리스크", "opinion": "여론"}
+	var deltas: Dictionary = o.get("deltas", {})
+	for k in ["rep", "risk", "opinion"]:
+		var v := int(deltas.get(k, 0))
+		if v != 0:
+			parts.append("%s %+d" % [names[k], v])
+	if o.has("money") and int(o.money) != 0:
+		parts.append("자금 %s%s" % ["+" if int(o.money) > 0 else "", Rules.man(int(o.money))])
+	if o.has("late_days"):
+		parts.append("지연 %d일" % int(o.late_days))
+	if o.has("flag"):
+		parts.append("[위험 기록: %s]" % o.flag)
+	return " · ".join(parts) if not parts.is_empty() else "변화 없음"
+
+
+func _alt_table(custom: VBoxContainer, title: String, rows: Array) -> void:
+	custom.add_child(UI.label(title, 13, UI.NAVY, true))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 4)
+	for r in rows:
+		var mine: bool = r[2]
+		var color := UI.ORANGE if mine else UI.INK
+		var left := UI.wrap(UI.label(("▶ " if mine else "· ") + str(r[0]), 12, color, mine))
+		left.custom_minimum_size.x = 250
+		grid.add_child(left)
+		var right := UI.wrap(UI.label(str(r[1]), 12, color if mine else UI.INK_SOFT, mine))
+		right.custom_minimum_size.x = 370
+		grid.add_child(right)
+	custom.add_child(grid)
+
+
+func _show_alternatives(ep: int, from_ending: bool = false) -> void:
+	_alt_from_ending = from_ending
+	var custom := modal.open({"kicker": "다른 길이었다면?", "title": "%s · 선택별 결과 비교" % Chapters.EP[ep].code, "body": "같은 상황에서 다른 선택을 했다면 어떻게 됐을지 미리 정해 둔 결과입니다. [color=#e07a35][b]주황색[/b][/color]이 내 선택이에요.", "width": 720, "assumption": true, "dismissable": false, "accent": UI.ORANGE})
+	match ep:
+		1: _alt_ep1(custom)
+		2: _alt_ep2(custom)
+		_: _alt_ep3(custom)
+	var buttons := [{"label": "엔딩 화면으로 돌아가기" if from_ending else "정리 화면으로 돌아가기", "id": "back_summary"}]
+	if from_ending:
+		for other in [1, 2, 3]:
+			if other != ep:
+				buttons.append({"label": "%s 다른 길 보기" % Chapters.EP[other].code, "id": "alt_%d" % other, "primary": false})
+	modal.add_buttons(buttons)
+
+
+func _alt_ep1(custom: VBoxContainer) -> void:
+	var spec := str(state.spec_choice)
+	_alt_table(custom, "① 구매 규격", [
+		["성능 중심 일반 규격", "평판 +3 · 여론 +4 · 여러 업체가 공정하게 참여", spec == "spec_general"],
+		["A사 모델명 지정", "평판 −3 · 리스크 +6 · 여론 −4 · 경쟁 제한 민원", spec == "spec_brand"],
+		["가격만, 성능 기준 생략", "평판 −1 · 리스크 +4 · 여론 −2 · 품질 위험", spec == "spec_cheap"],
+	])
+	var flags: Array = state.flags
+	_alt_table(custom, "② 박 실장의 메모", [
+		["직접 계산", "평판 +1 · 원칙을 지킴", flags.has("원칙계산")],
+		["출처 불명 메모 받기", "리스크 +3 · 공정성 위험 기록", flags.has("관행메모")],
+	])
+	var bid: Dictionary = state.bid
+	if not bid.is_empty() and bid.has("prices"):
+		var picks: Array[int] = []
+		for v in bid.get("picks", []):
+			picks.append(int(v))
+		var seed := 8731 + int(state.bid_attempt) * 97
+		var win_lo := -1.0
+		var win_hi := -1.0
+		var valid_lo := -1.0
+		for i in range(0, 101):
+			var rate := 85.0 + i * 0.1
+			var amount := int(round(float(Rules.BASIS) * rate / 100.0 / 1000.0)) * 1000
+			var r := Rules.run_bid(seed, bid.prices, picks, amount)
+			if int(r.rank) > 0 and valid_lo < 0:
+				valid_lo = rate
+			if int(r.rank) == 1:
+				if win_lo < 0:
+					win_lo = rate
+				win_hi = rate
+		var my_rate := float(bid.bid) / float(Rules.BASIS) * 100.0
+		var rank := int(bid.rank)
+		var rows := [["투찰률 %.1f%% 미만" % valid_lo, "하한 미달 → 투찰 무효", rank <= 0]]
+		if win_lo > 0:
+			var lo_profit := int(round(float(Rules.BASIS) * win_lo / 100.0)) - Rules.total_cost()
+			var hi_profit := int(round(float(Rules.BASIS) * win_hi / 100.0)) - Rules.total_cost()
+			rows.append(["투찰률 %.1f%% ~ %.1f%%" % [win_lo, win_hi], "1순위 → 적격심사 · 예상 이익 %s ~ %s" % [Rules.man(lo_profit), Rules.man(hi_profit)], rank == 1])
+			rows.append(["투찰률 %.1f%% 초과" % win_hi, "더 낮게 쓴 업체에 밀려 2순위 이하", rank > 1])
+		_alt_table(custom, "③ 투찰 (같은 예비가격 선택 기준 · 내 투찰률 %.1f%%)" % my_rate, rows)
+	var rate_f := float(bid.get("rate", 0.88))
+	var with_archive := Rules.review_score(rate_f, true, int(state.rep), int(state.risk))
+	var without := Rules.review_score(rate_f, false, int(state.rep), int(state.risk))
+	var choice := str(state.review_choice)
+	_alt_table(custom, "④ 적격심사", [
+		["보관함 실적까지 찾아 사실대로", "%.1f점 · %s" % [with_archive.total, "통과 · 낙찰" if with_archive.pass else "미달"], choice == "review_truth" and bool(state.archive_found)],
+		["찾은 서류만 사실대로", "%.1f점 · %s" % [without.total, "통과 · 낙찰" if without.pass else "미달 → 재도전"], choice == "review_truth" and not bool(state.archive_found)],
+		["실적을 부풀린 서류", "실격 · 리스크 +30 · 평판 −20 · 제재 엔딩", choice == "review_false"],
+		["심사 포기", "평판 −8 · 리스크 +6", choice == "review_giveup"],
+	])
+
+
+func _alt_ep2(custom: VBoxContainer) -> void:
+	custom.add_child(UI.label("① 상품 × ② 상생세일 · 4분기 이익 합계 (같은 시장 가정)", 13, UI.NAVY, true))
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 26)
@@ -1331,13 +1834,664 @@ func _show_ep2_summary() -> void:
 				total += int(Rules.quarter(key, q, sale, bool(state.price_cut) and q >= 2, bool(state.buyer_pick), 8731).profit)
 			var highlight: bool = mine and sale == bool(state.sale)
 			grid.add_child(UI.label(Rules.man(total), 12, UI.ORANGE if highlight else UI.INK, highlight))
-	custom.add_child(UI.wrap(UI.label("다수공급자계약(MAS)은 여러 공급자의 상품을 비교해 구매할 수 있게 한 계약 방식입니다. 실제 제도와 수치는 게임에서 단순화했습니다.", 11, UI.MUTED)))
-	modal.add_buttons([{"label": "용어 사전 보기", "id": "terms"}, {"label": "처음 화면으로", "id": "title", "primary": false}])
-	_feedback(true)
+	_alt_table(custom, "③ 3분기 원자재 가격 하락", [
+		["판매가 3% 인하", "평판 +2 · 경쟁력 상승 · 공정한 가격 반영", bool(state.price_cut)],
+		["현재 가격 유지", "리스크 +8 · 가격 점검 위험", bool(state.price_decided) and not bool(state.price_cut)],
+	])
+	_alt_event_table(custom, "④ 돌발 상황", Events.EP2, str(state.ep2_event), str(state.ep2_event_choice))
 
+
+func _alt_ep3(custom: VBoxContainer) -> void:
+	_alt_event_table(custom, "① 돌발 상황", Events.EP3, str(state.ep3_event), str(state.ep3_event_choice))
+	var result := str(state.inspect_result)
+	if result == "pass":
+		_alt_table(custom, "② 검수", [["규격대로 출고", "한 번에 합격 · 평판 +3", true], ["결함·대체 자재를 숨겼다면", "불합격 → 교체 비용과 지연, 또는 금품 유혹", false]])
+	else:
+		_alt_table(custom, "② 검수 (불합격 뒤 대응)", [
+			["교체 후 재검수", "교체 비용 · 지연 2일 · 평판 −1", result == "fixed"],
+			["이의 제기", "교체 비용 · 지연 3일 · 평판 −4", result == "argue"],
+			["상품권 건네기", "청렴계약 위반 · 리스크 +35 · 제재 엔딩", result == "gift"],
+		])
+	var invoice := str(state.invoice_choice)
+	_alt_table(custom, "③ 대금 청구", [
+		["정확한 금액 청구", "대금 지급 · 평판 +3 · 여론 +2", invoice == "exact"],
+		["200만 원 얹어 청구", "적발·환수 · 리스크 +30 · 평판 −15 · 제재 엔딩", invoice == "inflate"],
+	])
+
+
+func _alt_event_table(custom: VBoxContainer, title: String, pool: Dictionary, event_id: String, choice: String) -> void:
+	if not pool.has(event_id):
+		return
+	var rows := []
+	for o in pool[event_id].options:
+		rows.append([o.label, "%s · %s" % [o.title, _delta_text(o)], o.id == choice])
+	_alt_table(custom, "%s · %s" % [title, pool[event_id].title], rows)
+
+
+# --- Ending and credits ---------------------------------------------------------
+
+const ENDING_STAGE := {
+	"city": {"mascots": [Vector3(-0.7, 0, 0.9), Vector3(0.0, 0, 1.05)], "cam": [Vector3(-2.6, 2.3, 5.4), Vector3(-1.5, 1.6, 4.7)], "look": Vector3(0.45, 0.55, 0.8)},
+	"office": {"mascots": [Vector3(-0.2, 0, -0.25), Vector3(0.5, 0, -0.1)], "cam": [Vector3(-2.0, 2.3, 3.9), Vector3(-1.1, 1.55, 3.3)], "look": Vector3(0.95, 0.55, -0.3)},
+	"review": {"mascots": [Vector3(0.3, 0, 0.1), Vector3(1.0, 0, 0.25)], "cam": [Vector3(-1.3, 2.3, 4.3), Vector3(-0.5, 1.55, 3.6)], "look": Vector3(1.75, 0.55, 0.0)},
+}
+
+
+func _go_ending() -> void:
+	modal.close()
+	await _play_ending()
+	_show_ending_final()
+
+
+func _ending_wait(seconds: float) -> bool:
+	var waited := 0.0
+	while waited < seconds and not _cutscene_skip:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+	return _cutscene_skip
+
+
+func _play_ending() -> void:
+	var id := Endings.pick_ending(state)
+	state.ending = id
+	var seen: Array = profile.endings
+	if not seen.has(id):
+		seen.append(id)
+	_write_save()
+	if id == "trust":
+		_check_achievements(["trust_ending"])
+	_save_profile()
+	var e: Dictionary = Endings.ENDINGS[id]
+	in_cutscene = true
+	_cutscene_skip = false
+	game_active = false
+	hud.visible = false
+	title_layer.visible = false
+	_enter_room(e.room, false)
+	for marker in markers:
+		marker.visible = false
+	var stage: Dictionary = ENDING_STAGE[e.room]
+	player.global_position = stage.mascots[0]
+	dali_body.global_position = stage.mascots[1]
+	narami.set_moving(false)
+	dali.set_moving(false)
+	var cam_from: Vector3 = stage.cam[0]
+	var cam_to: Vector3 = stage.cam[1]
+	var look: Vector3 = stage.look
+	narami.face_point(cam_to)
+	dali.face_point(cam_to)
+	sound.play_music("ending" if e.good else "ending_sad")
+	cine_cam.fov = 34.0
+	cine_cam.current = true
+	var overlay := _ending_overlay(id)
+	var parts: Dictionary = overlay.get_meta("parts")
+	var lines := Endings.lines(state, id)
+	var line_time := 3.8 * float(profile.settings.cutscene)
+	var roll_time := 24.0
+	var whole := 3.4 + lines.size() * line_time + roll_time
+	var cam_tween := create_tween()
+	cam_tween.tween_method(func(p: float) -> void:
+		var k := p * p * (3.0 - 2.0 * p)
+		cine_cam.global_position = cam_from.lerp(cam_to, k)
+		cine_cam.look_at(look), 0.0, 1.0, whole)
+	var fade := overlay.get_node("Fade") as ColorRect
+	create_tween().tween_property(fade, "color:a", 0.0, 0.8)
+	var title_box := parts.title_box as Control
+	title_box.modulate.a = 0.0
+	create_tween().tween_property(title_box, "modulate:a", 1.0, 0.8)
+	if e.good:
+		narami.play_action("cheer")
+		dali.play_action("cheer")
+	else:
+		narami.play_action("sad")
+		dali.play_action("sad")
+	var skipped := await _ending_wait(3.4)
+	create_tween().tween_property(title_box, "modulate:a", 0.0, 0.5)
+	var speaker := parts.speaker as Label
+	var line_label := parts.line as RichTextLabel
+	var i := 0
+	while not skipped and i < lines.size():
+		speaker.text = lines[i][0]
+		line_label.text = lines[i][1]
+		line_label.visible_ratio = 0.0
+		create_tween().tween_property(line_label, "visible_ratio", 1.0, minf(line_time * 0.5, 1.8))
+		var who: String = lines[i][0]
+		var actor: Node3D = dali if who == "달이" else narami
+		if who in ["달이", "나라미"]:
+			actor.play_action(("cheer" if i == lines.size() - 1 else "talk") if e.good else ("sad" if i == 0 else "talk"))
+		else:
+			narami.play_action("talk" if e.good else "sad")
+		sound.play("move")
+		skipped = await _ending_wait(line_time)
+		i += 1
+	if not skipped:
+		speaker.text = ""
+		line_label.text = ""
+		var clip := parts.clip as Control
+		var roll := parts.roll as VBoxContainer
+		clip.visible = true
+		clip.modulate.a = 0.0
+		create_tween().tween_property(clip, "modulate:a", 1.0, 0.6)
+		roll.position.y = clip.size.y
+		var end_y := -roll.get_combined_minimum_size().y + clip.size.y * 0.45
+		create_tween().tween_property(roll, "position:y", end_y, roll_time)
+		if e.good:
+			dali.play_action("cheer")
+		skipped = await _ending_wait(roll_time + 0.6)
+	cam_tween.kill()
+	overlay.queue_free()
+	in_cutscene = false
+	ending_hold = true
+
+
+func _ending_overlay(id: String) -> Control:
+	var e: Dictionary = Endings.ENDINGS[id]
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.theme = UI.theme()
+	root.gui_input.connect(_on_cutscene_click)
+	modal.get_parent().add_child(root)
+	for top in [true, false]:
+		var bar := ColorRect.new()
+		bar.color = Color("#0b1417")
+		bar.anchor_right = 1.0
+		if top:
+			bar.offset_bottom = 56
+		else:
+			bar.anchor_top = 1.0
+			bar.anchor_bottom = 1.0
+			bar.offset_top = -118
+		root.add_child(bar)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	head.position = Vector2(28, 14)
+	head.add_child(UI.chip("ENDING %d / %d" % [int(e.no), Endings.ENDINGS.size()], e.color, Color.WHITE, 13))
+	head.add_child(UI.label("낙찰! 나라장터 생존기", 14, Color("#f3c9a3"), true))
+	root.add_child(head)
+	var skip := HBoxContainer.new()
+	skip.add_theme_constant_override("separation", 6)
+	skip.position = Vector2(1010, 16)
+	skip.add_child(UI.keycap("Enter"))
+	skip.add_child(UI.label("건너뛰기 · 화면 터치", 12, Color("#c9d6d4")))
+	root.add_child(skip)
+	# Ending title card
+	var title_box := PanelContainer.new()
+	title_box.add_theme_stylebox_override("panel", UI.panel(Color(0.04, 0.08, 0.09, 0.62), e.color, 16, 26, 2))
+	title_box.position = Vector2(60, 210)
+	root.add_child(title_box)
+	var tcol := VBoxContainer.new()
+	tcol.add_theme_constant_override("separation", 6)
+	title_box.add_child(tcol)
+	tcol.add_child(UI.label("ENDING %d" % int(e.no), 16, e.color, true))
+	tcol.add_child(UI.label(e.title, 44, Color("#fbf6ea"), true))
+	tcol.add_child(UI.label(e.subtitle, 18, Color("#d7e2e0")))
+	# Subtitles in the lower letterbox
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.position = Vector2(140, 614)
+	col.custom_minimum_size = Vector2(1000, 0)
+	root.add_child(col)
+	var speaker := UI.label("", 14, UI.ORANGE, true)
+	col.add_child(speaker)
+	var line := modal.rich("", 21, Color("#fbf6ea"))
+	line.custom_minimum_size = Vector2(1000, 0)
+	col.add_child(line)
+	# Credits roll (right side)
+	var clip := Control.new()
+	clip.clip_contents = true
+	clip.position = Vector2(800, 56)
+	clip.size = Vector2(440, 720 - 56 - 118)
+	clip.visible = false
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(clip)
+	var shade := ColorRect.new()
+	shade.color = Color(0.04, 0.08, 0.09, 0.66)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	clip.add_child(shade)
+	var roll := VBoxContainer.new()
+	roll.add_theme_constant_override("separation", 6)
+	roll.position = Vector2(30, 0)
+	roll.custom_minimum_size = Vector2(380, 0)
+	clip.add_child(roll)
+	_fill_credits(roll, id)
+	var fade := ColorRect.new()
+	fade.name = "Fade"
+	fade.color = Color("#0b1417")
+	fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(fade)
+	root.set_meta("parts", {"speaker": speaker, "line": line, "title_box": title_box, "clip": clip, "roll": roll})
+	return root
+
+
+func _credit_gap(roll: VBoxContainer, h: float) -> void:
+	var gap := Control.new()
+	gap.custom_minimum_size.y = h
+	roll.add_child(gap)
+
+
+func _centered(roll: VBoxContainer, text: String, size: int, color: Color, bold: bool = false) -> void:
+	var l := UI.wrap(UI.label(text, size, color, bold))
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.custom_minimum_size.x = 380
+	roll.add_child(l)
+
+
+func _fill_credits(roll: VBoxContainer, id: String) -> void:
+	var e: Dictionary = Endings.ENDINGS[id]
+	var light := Color("#fbf6ea")
+	var soft := Color("#a9bcbb")
+	_centered(roll, "ENDING %d" % int(e.no), 14, e.color, true)
+	_centered(roll, e.title, 26, light, true)
+	_centered(roll, e.subtitle, 13, soft)
+	_credit_gap(roll, 18)
+	var total := Endings.overall(state)
+	_centered(roll, "종합 등급  %s  ·  %.0f점" % [Endings.grade(total), total], 18, Endings.grade_color(Endings.grade(total)), true)
+	for ep in [1, 2, 3]:
+		var sc := Endings.chapter_score(state, ep)
+		_centered(roll, "%s %s  %s · %.0f점" % [Chapters.EP[ep].code, Chapters.EP[ep].title, Endings.grade(sc), sc], 13, light)
+	_credit_gap(roll, 16)
+	_centered(roll, "나의 선택", 15, UI.ORANGE, true)
+	for line in _choice_lines():
+		_centered(roll, line, 12, soft)
+	_centered(roll, "자금 %s · 평판 %d · 리스크 %d" % [Rules.man(int(state.money)), int(state.rep), int(state.risk)], 12, light)
+	_credit_gap(roll, 16)
+	_centered(roll, "업적 %d / %d · 엔딩 %d / %d" % [(profile.achievements as Array).size(), Endings.ACHIEVEMENTS.size(), (profile.endings as Array).size(), Endings.ENDINGS.size()], 13, light, true)
+	_credit_gap(roll, 40)
+	_centered(roll, "만든 사람들", 18, UI.ORANGE, true)
+	_credit_gap(roll, 6)
+	for pair in Endings.CREDITS:
+		_centered(roll, pair[0], 11, soft)
+		_centered(roll, pair[1], 15, light, true)
+		_credit_gap(roll, 8)
+	_credit_gap(roll, 30)
+	_centered(roll, "나라미 · 달이와 함께해 주셔서", 15, light, true)
+	_centered(roll, "고맙습니다!", 26, UI.ORANGE, true)
+
+
+func _choice_lines() -> Array:
+	var out := []
+	var spec: String = {"spec_general": "성능 중심 규격", "spec_brand": "모델명 지정", "spec_cheap": "성능 기준 누락"}.get(str(state.spec_choice), "-")
+	out.append("규격: %s" % spec)
+	var bid: Dictionary = state.bid
+	if not bid.is_empty():
+		out.append("투찰: %s원 · %s" % [Rules.fmt(int(bid.bid)), "1순위" if int(bid.rank) == 1 else ("%d순위" % int(bid.rank) if int(bid.rank) > 0 else "하한 미달")])
+	var review: String = {"review_truth": "사실대로 제출", "review_false": "허위 서류", "review_giveup": "심사 포기"}.get(str(state.review_choice), "-")
+	out.append("적격심사: %s%s" % [review, " · 통과" if Endings.won_ep1(state) else ""])
+	if not str(state.product).is_empty():
+		out.append("쇼핑몰: %s · 세일 %s · 이익 %s" % [Rules.PRODUCTS[str(state.product)].name, "참여" if state.sale else "미참여", Rules.man(Endings.ep2_profit(state))])
+	var ev2 := Events.option(Events.EP2, str(state.ep2_event), str(state.ep2_event_choice))
+	if not ev2.is_empty():
+		out.append(str(ev2.log))
+	var ev3 := Events.option(Events.EP3, str(state.ep3_event), str(state.ep3_event_choice))
+	if not ev3.is_empty():
+		out.append(str(ev3.log))
+	if not str(state.invoice_choice).is_empty():
+		out.append("대금 청구: %s" % ("정확한 금액" if state.invoice_choice == "exact" else "과다 청구"))
+	return out
+
+
+func _show_ending_final(note: String = "") -> void:
+	var id := str(state.ending)
+	if not Endings.ENDINGS.has(id):
+		_show_title()
+		return
+	var e: Dictionary = Endings.ENDINGS[id]
+	var total := Endings.overall(state)
+	var body := "%s\n\n종합 등급 [b]%s[/b] (%.0f점) · 수집한 엔딩 [b]%d / %d[/b]%s" % [e.subtitle, Endings.grade(total), total, (profile.endings as Array).size(), Endings.ENDINGS.size(), "" if note.is_empty() else "\n\n" + note]
+	var custom := modal.open({"kicker": "ENDING %d / %d" % [int(e.no), Endings.ENDINGS.size()], "title": e.title, "body": body, "dismissable": false, "accent": e.color, "width": 620})
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	for ep in [1, 2, 3]:
+		var sc := Endings.chapter_score(state, ep)
+		row.add_child(UI.chip("%s  %s · %.0f점" % [Chapters.EP[ep].code, Endings.grade(sc), sc], Endings.grade_color(Endings.grade(sc)), Color.WHITE, 12))
+	custom.add_child(row)
+	modal.add_buttons([
+		{"label": "결과 카드 저장 (이미지)", "id": "share_card", "accent": e.color},
+		{"label": "선택 돌아보기 · 다른 길이었다면?", "id": "alt_1", "primary": false},
+		{"label": "엔딩·업적 도감", "id": "collection", "primary": false},
+		{"label": "처음 화면으로", "id": "title", "primary": false},
+	])
+	_alt_from_ending = true
+
+
+func _on_cutscene_click(e: InputEvent) -> void:
+	if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed):
+		_cutscene_skip = true
+
+
+# --- Result card ------------------------------------------------------------------
+
+func _share_text() -> String:
+	var id := str(state.ending)
+	var e: Dictionary = Endings.ENDINGS.get(id, {"title": "-", "no": 0})
+	var total := Endings.overall(state)
+	var lines := ["[낙찰! 나라장터 생존기 결과]", "엔딩 %d · %s" % [int(e.no), e.title], "종합 등급 %s (%.0f점)" % [Endings.grade(total), total]]
+	for ep in [1, 2, 3]:
+		var sc := Endings.chapter_score(state, ep)
+		lines.append("%s %s %.0f점" % [Chapters.EP[ep].code, Endings.grade(sc), sc])
+	lines.append_array(_choice_lines())
+	return "\n".join(lines)
+
+
+func _build_share_card() -> Control:
+	var id := str(state.ending)
+	var e: Dictionary = Endings.ENDINGS.get(id, Endings.ENDINGS.steady)
+	var layer := Control.new()
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.theme = UI.theme()
+	modal.get_parent().add_child(layer)
+	var shade := ColorRect.new()
+	shade.color = Color("#0b1417")
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(shade)
+	var card := PanelContainer.new()
+	var style := UI.panel(Color("#fffdf8"), e.color, 18, 30, 4)
+	card.add_theme_stylebox_override("panel", style)
+	card.position = Vector2(220, 90)
+	card.custom_minimum_size = Vector2(840, 0)
+	layer.add_child(card)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	card.add_child(col)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	head.add_child(UI.chip("낙", UI.ORANGE, Color.WHITE, 16))
+	head.add_child(UI.label("낙찰! 나라장터 생존기 · 나의 결과 카드", 15, UI.NAVY, true))
+	col.add_child(head)
+	col.add_child(UI.label("ENDING %d · %s" % [int(e.no), e.title], 32, e.color, true))
+	col.add_child(UI.label(e.subtitle, 15, UI.INK_SOFT))
+	var grades := HBoxContainer.new()
+	grades.add_theme_constant_override("separation", 8)
+	var total := Endings.overall(state)
+	grades.add_child(UI.chip("종합 %s · %.0f점" % [Endings.grade(total), total], Endings.grade_color(Endings.grade(total)), Color.WHITE, 16))
+	for ep in [1, 2, 3]:
+		var sc := Endings.chapter_score(state, ep)
+		grades.add_child(UI.chip("%s %s" % [Chapters.EP[ep].code, Endings.grade(sc)], Color("#ece6da"), UI.INK, 14))
+	col.add_child(grades)
+	col.add_child(HSeparator.new())
+	var lines := _choice_lines()
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 24)
+	grid.add_theme_constant_override("v_separation", 4)
+	for line in lines:
+		var l := UI.label("· " + str(line), 13, UI.INK)
+		l.custom_minimum_size.x = 380
+		l.clip_text = true
+		grid.add_child(l)
+	col.add_child(grid)
+	col.add_child(UI.label("자금 %s · 평판 %d · 리스크 %d · 업적 %d/%d" % [Rules.man(int(state.money)), int(state.rep), int(state.risk), (profile.achievements as Array).size(), Endings.ACHIEVEMENTS.size()], 13, UI.NAVY, true))
+	col.add_child(UI.label("ysyny1126-bot.github.io/nakchal-narajangteo · 교육용 시뮬레이션 (수치는 게임용 가정)", 11, UI.MUTED))
+	layer.set_meta("card", card)
+	return layer
+
+
+func _capture_share_card() -> Image:
+	var layer := _build_share_card()
+	for i in range(4):
+		await get_tree().process_frame
+	var card := layer.get_meta("card") as Control
+	var img := get_viewport().get_texture().get_image()
+	var rect := get_viewport().get_final_transform() * card.get_global_rect()
+	var region := Rect2i(rect).intersection(Rect2i(Vector2i.ZERO, img.get_size()))
+	var cut := img.get_region(region)
+	layer.queue_free()
+	return cut
+
+
+func _save_share_card() -> void:
+	modal.close()
+	var cut := await _capture_share_card()
+	DisplayServer.clipboard_set(_share_text())
+	var note := ""
+	if OS.has_feature("web"):
+		JavaScriptBridge.download_buffer(cut.save_png_to_buffer(), "nakchal_result.png", "image/png")
+		note = "결과 카드 이미지를 내려받았어요. 결과 요약 글도 클립보드에 복사했어요."
+	else:
+		var path := OS.get_user_data_dir().path_join("nakchal_result.png")
+		cut.save_png(path)
+		note = "결과 카드를 저장했어요: %s\n결과 요약 글도 클립보드에 복사했어요." % path
+	sound.play("coin")
+	_show_ending_final(note)
+
+
+# --- Glossary, settings, collection, profile -----------------------------------------
 
 func _show_terms() -> void:
-	modal.open({"kicker": "용어 사전", "title": "조달의 언어", "body": "· [b]구매 규격[/b] — 기관이 사려는 물품의 성능·조건을 적은 문서\n· [b]기초금액[/b] — 예정가격을 정하는 기준 금액\n· [b]복수예비가격[/b] — 기초금액 ±2% 범위에서 만든 15개 가격\n· [b]예정가격[/b] — 업체들이 많이 고른 예비가격 4개의 평균\n· [b]낙찰하한율[/b] — 이 비율보다 낮은 입찰은 무효(덤핑 방지)\n· [b]적격심사[/b] — 1순위 업체의 이행 능력을 보는 심사(85점 통과)\n· [b]종합쇼핑몰 · MAS[/b] — 여러 공급자 상품을 비교·구매하는 계약 방식\n\n게임 속 수치는 학습을 돕기 위한 가정입니다.", "buttons": [{"label": "닫기", "id": "close"}]})
+	if modal.is_open() and not modal.dismissable:
+		hud.toast("진행 중인 대화를 마친 뒤 열 수 있어요. 대화 속 밑줄 단어는 바로 누를 수 있어요.", "warn")
+		return
+	var seen: Array = profile.terms
+	var custom := modal.open({"kicker": "용어 도감 · %d / %d" % [seen.size(), Glossary.TERMS.size()], "title": "조달의 언어", "body": "단어를 누르면 뜻 카드가 열리고 도감에 모여요. 대화 속 [color=#2f6f80][u]밑줄 단어[/u][/color]도 누를 수 있어요.", "width": 660})
+	for ep in [1, 2, 3]:
+		custom.add_child(UI.label("%s · %s" % [Chapters.EP[ep].code, Chapters.EP[ep].title], 12, UI.ORANGE, true))
+		var flow := HFlowContainer.new()
+		flow.add_theme_constant_override("h_separation", 6)
+		flow.add_theme_constant_override("v_separation", 6)
+		for id in Glossary.TERMS:
+			var t: Dictionary = Glossary.TERMS[id]
+			if int(t.ep) != ep:
+				continue
+			var b := Button.new()
+			b.text = t.term
+			b.focus_mode = Control.FOCUS_NONE
+			UI.style_button(b, seen.has(id), UI.NAVY)
+			b.pressed.connect(_show_term.bind(id))
+			flow.add_child(b)
+		custom.add_child(flow)
+	modal.add_buttons([{"label": "닫기", "id": "close"}])
+
+
+func _show_term(id: String) -> void:
+	if not Glossary.TERMS.has(id):
+		return
+	var t: Dictionary = Glossary.TERMS[id]
+	var seen: Array = profile.terms
+	var first := not seen.has(id)
+	if first:
+		seen.append(id)
+		_save_profile()
+		_check_achievements()
+	if is_instance_valid(_term_card):
+		_term_card.queue_free()
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", UI.shadow_panel(Color("#1f3d4af7"), Color("#2f6f80"), 12, 16))
+	card.custom_minimum_size = Vector2(400, 0)
+	card.position = Vector2(1280 - Hud.PANEL_W - 22 - 410, 50)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and is_instance_valid(card):
+			card.queue_free())
+	modal.get_parent().add_child(card)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	card.add_child(col)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	head.add_child(UI.chip("용어 카드", UI.ORANGE, Color.WHITE, 11))
+	head.add_child(UI.label(("새로 수집! " if first else "") + "도감 %d / %d" % [seen.size(), Glossary.TERMS.size()], 11, Color("#ffd9b8") if first else Color("#a9bcbb"), true))
+	col.add_child(head)
+	col.add_child(UI.label(t.term, 20, Color("#fbf6ea"), true))
+	col.add_child(UI.wrap(UI.label(t.def, 13, Color("#dfe8e6"))))
+	col.add_child(UI.label("눌러서 닫기", 10, Color("#8fa6a6")))
+	_term_card = card
+	card.modulate.a = 0.0
+	card.create_tween().tween_property(card, "modulate:a", 1.0, 0.15)
+	sound.play("inspect")
+	get_tree().create_timer(8.0).timeout.connect(func() -> void:
+		if is_instance_valid(card):
+			card.queue_free())
+
+
+func _touch_enabled() -> bool:
+	match str(profile.settings.touch):
+		"on": return true
+		"off": return false
+	return DisplayServer.is_touchscreen_available()
+
+
+func _show_settings() -> void:
+	if modal.is_open() and not modal.dismissable and modal.card != null and not title_layer.visible:
+		hud.toast("진행 중인 대화를 마친 뒤 설정을 열 수 있어요.", "warn")
+		return
+	var custom := modal.open({"kicker": "설정", "title": "보기 · 소리 · 조작", "width": 580})
+	_setting_choice(custom, "글자 크기", [["보통", 1.0], ["크게", 1.15]], "text")
+	_setting_choice(custom, "시나리오 대사 속도", [["느리게", 1.4], ["보통", 1.0], ["빠르게", 0.75]], "cutscene")
+	_setting_slider(custom, "배경음", "music")
+	_setting_slider(custom, "효과음", "sfx")
+	_setting_choice(custom, "터치 조작 버튼", [["자동", "auto"], ["항상 표시", "on"], ["숨김", "off"]], "touch")
+	custom.add_child(UI.wrap(UI.label("설정은 이 기기에 저장되고 새 게임을 시작해도 유지돼요.", 11, UI.MUTED)))
+	modal.add_buttons([{"label": "닫기", "id": "close"}])
+
+
+func _setting_choice(custom: VBoxContainer, title: String, options: Array, key: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var l := UI.label(title, 13, UI.INK, true)
+	l.custom_minimum_size.x = 160
+	row.add_child(l)
+	for opt in options:
+		var b := Button.new()
+		b.text = opt[0]
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(92, 34)
+		var current = profile.settings[key]
+		var on: bool = str(current) == str(opt[1]) if typeof(opt[1]) == TYPE_STRING else is_equal_approx(float(current), float(opt[1]))
+		UI.style_button(b, on, UI.NAVY)
+		b.pressed.connect(func() -> void:
+			profile.settings[key] = opt[1]
+			_apply_settings(true)
+			sound.play("select")
+			_show_settings())
+		row.add_child(b)
+	custom.add_child(row)
+
+
+func _setting_slider(custom: VBoxContainer, title: String, key: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var l := UI.label(title, 13, UI.INK, true)
+	l.custom_minimum_size.x = 160
+	row.add_child(l)
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.value = float(profile.settings[key])
+	slider.custom_minimum_size = Vector2(260, 24)
+	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(slider)
+	var value := UI.label("%d%%" % int(slider.value * 100), 12, UI.INK_SOFT, true)
+	row.add_child(value)
+	slider.value_changed.connect(func(v: float) -> void:
+		profile.settings[key] = v
+		value.text = "%d%%" % int(v * 100)
+		_apply_settings(false))
+	slider.drag_ended.connect(func(_changed: bool) -> void: sound.play("select"))
+	custom.add_child(row)
+
+
+func _apply_settings(rebuild_hud: bool) -> void:
+	var st: Dictionary = profile.settings
+	var old := UI.text_scale
+	UI.text_scale = float(st.text)
+	if is_instance_valid(sound):
+		sound.set_volumes(float(st.music), float(st.sfx))
+	if rebuild_hud and not is_equal_approx(old, UI.text_scale) and is_instance_valid(hud):
+		var root := hud.get_parent() as Control
+		var was_visible := hud.visible
+		hud.queue_free()
+		_make_hud(root)
+		hud.visible = was_visible
+		if int(state.episode) > 0:
+			_refresh()
+	_save_profile()
+
+
+func _show_collection() -> void:
+	var endings: Array = profile.endings
+	var got: Array = profile.achievements
+	var custom := modal.open({"kicker": "엔딩·업적 도감", "title": "나의 기록", "body": "엔딩 [b]%d / %d[/b] · 업적 [b]%d / %d[/b] · 용어 도감 [b]%d / %d[/b]\n선택에 따라 엔딩이 달라져요. 다른 길로도 플레이해 보세요!" % [endings.size(), Endings.ENDINGS.size(), got.size(), Endings.ACHIEVEMENTS.size(), (profile.terms as Array).size(), Glossary.TERMS.size()], "width": 700})
+	custom.add_child(UI.label("엔딩", 13, UI.NAVY, true))
+	var ids := Endings.ENDINGS.keys()
+	ids.sort_custom(func(a: String, b: String) -> bool: return int(Endings.ENDINGS[a].no) < int(Endings.ENDINGS[b].no))
+	for id in ids:
+		var e: Dictionary = Endings.ENDINGS[id]
+		var have := endings.has(id)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		row.add_child(UI.chip("ENDING %d" % int(e.no), e.color if have else Color("#b9b4aa"), Color.WHITE, 11))
+		row.add_child(UI.label(e.title if have else "???", 14, UI.INK if have else UI.MUTED, true))
+		row.add_child(UI.label(e.subtitle if have else "아직 보지 못한 엔딩", 12, UI.INK_SOFT if have else UI.MUTED))
+		custom.add_child(row)
+	custom.add_child(UI.label("업적", 13, UI.NAVY, true))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 18)
+	grid.add_theme_constant_override("v_separation", 4)
+	for id in Endings.ACHIEVEMENTS:
+		var a: Dictionary = Endings.ACHIEVEMENTS[id]
+		var have := got.has(id)
+		var desc := str(a.desc) % Glossary.TERMS.size() if "%d" in str(a.desc) else str(a.desc)
+		var l := UI.label("%s %s — %s" % ["●" if have else "○", a.name, desc], 12, UI.GREEN.darkened(0.2) if have else UI.MUTED, have)
+		l.custom_minimum_size.x = 310
+		grid.add_child(l)
+	custom.add_child(grid)
+	if ending_hold:
+		modal.add_buttons([{"label": "엔딩 화면으로", "id": "ending_final"}])
+	else:
+		modal.add_buttons([{"label": "닫기", "id": "close"}])
+
+
+func _check_achievements(extra: Array = []) -> void:
+	if _dev_mode():
+		return
+	var got: Array = profile.achievements
+	var now := Endings.achieved(state) + extra
+	if (profile.terms as Array).size() >= Glossary.TERMS.size():
+		now.append("glossary")
+	var fresh := []
+	for id in now:
+		if Endings.ACHIEVEMENTS.has(id) and not got.has(id):
+			got.append(id)
+			fresh.append(id)
+	if fresh.is_empty():
+		return
+	_save_profile()
+	for id in fresh:
+		if is_instance_valid(hud) and hud.visible:
+			hud.toast("업적 달성 · %s" % Endings.ACHIEVEMENTS[id].name, "success")
+	if is_instance_valid(sound):
+		sound.play("coin")
+
+
+func _save_profile() -> void:
+	if _dev_mode():
+		return
+	var file := FileAccess.open(PROFILE_PATH, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(profile))
+		file.close()
+
+
+func _load_profile() -> void:
+	if _dev_mode() or not FileAccess.file_exists(PROFILE_PATH):
+		return
+	var file := FileAccess.open(PROFILE_PATH, FileAccess.READ)
+	if not file:
+		return
+	var data = JSON.parse_string(file.get_as_text())
+	file.close()
+	if typeof(data) != TYPE_DICTIONARY:
+		return
+	for key in ["achievements", "endings", "terms"]:
+		if data.get(key) is Array:
+			profile[key] = data[key]
+	if data.get("settings") is Dictionary:
+		(profile.settings as Dictionary).merge(data.settings, true)
 
 
 # --- Choice handling -------------------------------------------------------------
@@ -1355,6 +2509,7 @@ func _on_choice(id: String, _option: Dictionary) -> void:
 			modal.open({"kicker": "시점 전환 · 한빛퍼니처 대표", "title": "이제 업체 대표 나라미의 차례예요", "body": "시청 공고가 나라장터에 올라왔습니다. 마감까지 2시간!\n\n[b]공고문[/b]과 [b]원가 장부[/b]를 확인하면 [b]입찰 단말[/b]이 열립니다.", "buttons": [{"label": "사무실 조사 시작", "id": "close"}]})
 		"park_own":
 			var chips := _apply({"rep": 1})
+			(state.flags as Array).append("원칙계산")
 			_mark_found("park", "박 실장: 메모 대신 직접 계산하기로 결정")
 			modal.open({"kicker": "대화 결과", "title": "\"역시 대표님 원칙대로죠.\"", "body": "출처가 불분명한 정보 대신 공고와 원가로 판단하기로 했습니다.", "deltas": chips, "buttons": [{"label": "닫기", "id": "close"}]})
 		"park_memo":
@@ -1382,7 +2537,7 @@ func _on_choice(id: String, _option: Dictionary) -> void:
 		"retry_review":
 			_close_modal()
 			hud.toast("보관함 등 확인하지 않은 곳을 조사해 보세요.", "info")
-		"ep1_summary": _show_ep1_summary()
+		"ep1_summary": _finish_chapter(1)
 		"restart_ep1":
 			_close_modal()
 			_start_new_game()
@@ -1426,21 +2581,56 @@ func _on_choice(id: String, _option: Dictionary) -> void:
 		"title":
 			_close_modal()
 			_show_title()
+		"start_ep3":
+			_close_modal()
+			_start_ep3()
+		"ep3_summary": _finish_chapter(3)
+		"ending_go", "ending_now": _go_ending()
+		"ending_final": _show_ending_final()
+		"alt_1", "alt_2", "alt_3": _show_alternatives(int(id.right(1)), _alt_from_ending)
+		"back_summary":
+			if _alt_from_ending:
+				_show_ending_final()
+			else:
+				_show_summary(_summary_ep)
+		"quiz_a0", "quiz_a1", "quiz_a2", "quiz_a3": _answer_quiz(int(id.right(1)))
+		"quiz_next":
+			if int(_quiz.index) >= (Glossary.QUIZ[int(_quiz.ep)] as Array).size():
+				_show_summary(int(_quiz.ep))
+			else:
+				_show_quiz_question()
+		"to_inspect":
+			_close_modal()
+			hud.toast("검수대에서 최 검수관에게 검수를 받으세요.", "info")
+		"insp_fix", "insp_gift", "insp_argue": _resolve_inspection(id)
+		"inv_exact", "inv_inflate": _resolve_invoice(id)
+		"share_card": _save_share_card()
+		"collection": _show_collection()
+		_:
+			if id.begins_with("ev2_") or id.begins_with("ev3_"):
+				_resolve_event(int(id.substr(2, 1)), id.substr(4))
 	_refresh()
 
 
 # --- Save ----------------------------------------------------------------
 
-func _write_save() -> void:
+func _dev_mode() -> bool:
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--capture" or arg.begins_with("--video="):
-			return
+			return true
+	return false
+
+
+func _write_save() -> void:
+	if _dev_mode():
+		return
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file:
 		file.store_string(JSON.stringify(state))
 		file.close()
 		if is_instance_valid(hud):
 			hud.flash_saved()
+	_check_achievements()
 
 
 func _load_save() -> void:

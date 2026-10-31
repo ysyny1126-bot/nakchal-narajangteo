@@ -20,6 +20,12 @@ const GOLD := Color("#c6963f")
 const BLUE := Color("#3f78a8")
 
 static var _theme: Theme
+## Global text multiplier from the settings panel (1.0 normal, 1.15 large).
+static var text_scale := 1.0
+
+
+static func px(size: int) -> int:
+	return int(round(size * text_scale))
 
 
 static func theme() -> Theme:
@@ -57,7 +63,7 @@ static func shadow_panel(bg: Color, border: Color = LINE, radius: int = 12, pad:
 static func label(text: String, size: int = 13, color: Color = INK, bold: bool = false) -> Label:
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_font_size_override("font_size", px(size))
 	l.add_theme_color_override("font_color", color)
 	if bold:
 		l.add_theme_font_override("font", Props.font(true))
@@ -91,7 +97,7 @@ static func style_button(button: Button, primary: bool = false, accent: Color = 
 	button.add_theme_color_override("font_focus_color", text)
 	button.add_theme_color_override("font_disabled_color", text.darkened(0.3))
 	button.add_theme_font_override("font", Props.font(true))
-	button.add_theme_font_size_override("font_size", 13)
+	button.add_theme_font_size_override("font_size", px(13))
 
 
 ## Small keycap chip like [E] used in hints.

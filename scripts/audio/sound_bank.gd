@@ -13,6 +13,9 @@ var _music_cache := {}
 var _pending := {}
 var _current := ""
 var muted := false
+## 0..1 user volumes from the settings panel.
+var music_volume := 0.8
+var sfx_volume := 0.8
 
 
 func _ready() -> void:
@@ -84,7 +87,20 @@ func _start_music(stream: AudioStreamWAV) -> void:
 	_music.volume_db = -40.0
 	_music.play()
 	var tween := create_tween()
-	tween.tween_property(_music, "volume_db", -17.0, 1.2)
+	tween.tween_property(_music, "volume_db", _music_db(), 1.2)
+
+
+func _music_db() -> float:
+	return -17.0 + linear_to_db(maxf(music_volume, 0.001) / 0.8)
+
+
+func set_volumes(music: float, sfx: float) -> void:
+	music_volume = music
+	sfx_volume = sfx
+	if is_instance_valid(_music):
+		_music.volume_db = _music_db()
+	for p in _players:
+		p.volume_db = -7.0 + linear_to_db(maxf(sfx_volume, 0.001) / 0.8)
 
 
 # --- Synthesis -----------------------------------------------------------
@@ -151,8 +167,11 @@ func _compose(room: String) -> AudioStreamWAV:
 		"office": [[53, 57, 60, 65], [50, 53, 57, 62], [46, 50, 53, 58], [48, 52, 55, 60]],
 		"review": [[57, 60, 64, 69], [53, 57, 60, 65], [48, 52, 55, 60], [55, 59, 62, 67]],
 		"showroom": [[62, 66, 69, 74], [59, 62, 66, 71], [55, 59, 62, 67], [57, 61, 64, 69]],
+		"warehouse": [[55, 59, 62, 67], [52, 55, 59, 64], [48, 52, 55, 60], [50, 54, 57, 62]],
+		"ending": [[60, 64, 67, 72], [55, 59, 62, 67], [57, 60, 64, 69], [53, 57, 60, 65]],
+		"ending_sad": [[57, 60, 64, 69], [53, 57, 60, 65], [50, 53, 57, 62], [52, 56, 59, 64]],
 	}
-	var bpm: float = {"city": 92.0, "office": 100.0, "review": 84.0, "showroom": 108.0}.get(room, 96.0)
+	var bpm: float = {"city": 92.0, "office": 100.0, "review": 84.0, "showroom": 108.0, "warehouse": 96.0, "ending": 76.0, "ending_sad": 66.0}.get(room, 96.0)
 	var chords: Array = progressions.get(room, progressions.city)
 	var beat := 60.0 / bpm
 	var bar := beat * 4.0

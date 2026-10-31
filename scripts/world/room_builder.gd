@@ -16,6 +16,7 @@ static func build(room: String, root: Node3D) -> Dictionary:
 		"city": return _city(root)
 		"review": return _review(root)
 		"showroom": return _showroom(root)
+		"warehouse": return _warehouse(root)
 		"title": return _title(root)
 		_: return _office(root)
 
@@ -25,6 +26,7 @@ static func title_of(room: String) -> String:
 		"city": return "○○시청 · 구매 규격 검토실"
 		"review": return "조달청 · 적격심사실"
 		"showroom": return "나라장터 · 종합쇼핑몰"
+		"warehouse": return "○○시청 별관 · 납품 검수장"
 		_: return "한빛퍼니처 · 업체 사무실"
 
 
@@ -370,6 +372,78 @@ static func _showroom(root: Node3D) -> Dictionary:
 			_hs("rival", "경쟁 상품 진열대 (선택)", Vector3(0.75, 0, -0.55), Vector3(0.75, 1.5, -1.75)),
 			_hs("buyer", "구매 비교 · 이 주무관", Vector3(0.2, 0, 1.65), Vector3(-0.05, 1.75, 0.6)),
 			_hs("terminal", "분기 판매 단말", Vector3(3.6, 0, -0.35), Vector3(3.75, 2.15, -1.35)),
+		],
+	}
+
+
+# --- EP03: Delivery & inspection hall -------------------------------------------
+
+static func _warehouse(root: Node3D) -> Dictionary:
+	var size := Vector2(9.0, 6.2)
+	_shell(root, size, Props.textured_mat(Props.tile_texture(Color("#a7aaa3"), Color("#7f837c")), Vector2(3.0, 2.1), Color.WHITE, 0.55), Color("#d9d4c6"), Color("#6c7a5e"), Color("#4a5642"))
+	_room_sign(root, size, "○○시청 별관 · 납품 검수장", Color("#3d5236"), 0.4)
+	# Safety stripes marking the loading lane.
+	var stripe := Props.mat(Color("#e2b43c"), 0.7)
+	for z in [-0.55, 0.85]:
+		Props.box(root, Vector3(-2.55, 0.008, z), Vector3(2.9, 0.012, 0.06), stripe)
+	# Delivery schedule board (left of back wall)
+	Props.wall_board(root, Vector3(-2.75, 1.25, -3.05), Vector2(1.9, 1.15), Color("#4a5642"), Color("#f4f3ec"), "납품 일정표", "회의용 탁자 50개\n납기 D-10 · 본관 3층 설치\n검수 후 대금 청구", Color("#3d5236"))
+	# Roll-up loading door (back wall, right)
+	var door_x := 2.9
+	Props.box(root, Vector3(door_x, 0.95, -3.07), Vector3(2.0, 1.9, 0.04), Props.mat(Color("#8c9294"), 0.5, 0.3))
+	for i in range(9):
+		Props.box(root, Vector3(door_x, 0.12 + i * 0.2, -3.045), Vector3(1.96, 0.02, 0.02), Props.mat(Color("#6f7577"), 0.5, 0.3))
+	Props.box(root, Vector3(door_x, 1.95, -3.04), Vector3(2.2, 0.12, 0.08), Props.mat(Color("#3a4248"), 0.6))
+	# Outbound area: stacked cartons + Park
+	for i in range(3):
+		for j in range(2):
+			_deco(root, "cardboardBoxClosed", Vector3(-3.7 + i * 0.5, j * 0.42, 0.15), 0.1 * (i - 1), 2.4)
+	_deco(root, "cardboardBoxOpen", Vector3(-3.6, 0, 1.6), 0.4, 2.4)
+	Props.model(root, "table", Vector3(-2.1, 0, -0.05), 0.0, Props.KENNEY_SCALE, true, Vector3(1.3, 0, 0.7))
+	Props.document(root, Vector3(-2.3, 0.65, -0.05), Vector2(0.36, 0.26), Color("#3d5236"), "", 0.2, 2)
+	Props.box(root, Vector3(-1.85, 0.68, 0.0), Vector3(0.22, 0.08, 0.16), Props.mat(Color("#d9534a"), 0.6))
+	Props.add_collider(root, Vector3(-3.2, 0, 0.15), Vector3(1.6, 1.0, 0.6))
+	var park := _npc(root, "박 실장", Vector3(-1.6, 0, 0.55), Color("#5e6f8a"), Color("#3a2f28"), 0.5, Color("#5e6f8a"))
+	# Inspection platform with sample tables and inspector Choi
+	_rug(root, Vector3(0.75, 0, -1.6), Vector2(3.0, 1.9), Color("#5c6b55"), Color("#e2b43c"))
+	var wood := Props.surface_mat("oak_wood_planks", Color("#d9b48a"), 0.6, 0.6)
+	_deco(root, "table", Vector3(0.25, 0, -1.75), 0.0, 1.5, {"wood": wood, "woodDark": wood, "_defaultMat": wood})
+	_deco(root, "table", Vector3(1.45, 0, -1.75), 0.0, 1.5, {"wood": wood, "woodDark": wood, "_defaultMat": wood})
+	Props.add_collider(root, Vector3(0.85, 0, -1.75), Vector3(2.4, 1.0, 0.8))
+	Props.document(root, Vector3(0.95, 0.78, -1.6), Vector2(0.4, 0.3), Color("#24435a"), "", -0.1, 3)
+	# Measuring tape and weight on the sample table
+	Props.cylinder(root, Vector3(0.1, 0.8, -1.65), 0.06, 0.05, Props.mat(Color("#e2b43c"), 0.5))
+	Props.box(root, Vector3(1.6, 0.86, -1.8), Vector3(0.24, 0.16, 0.24), Props.mat(Color("#3a4248"), 0.4, 0.5))
+	var choi := _npc(root, "최 검수관", Vector3(0.85, 0, -2.5), Color("#2f4f6a"), Color("#231f1d"), 0.0, Color("#e0c46a"))
+	# Payment terminal
+	var terminal := Node3D.new()
+	terminal.position = Vector3(3.7, 0, -0.9)
+	root.add_child(terminal)
+	Props.rounded_box(terminal, Vector3(0, 0.5, 0), Vector3(0.9, 1.0, 0.5), Props.mat(Color("#3d5236"), 0.6))
+	Props.monitor(terminal, Vector3(0, 1.0, -0.05), Color("#4f9a62"), "대금 청구", -0.5)
+	Props.add_collider(root, terminal.position, Vector3(0.95, 1.0, 0.6))
+	# Warranty notice stand
+	Props.box(root, Vector3(3.9, 0.02, 1.85), Vector3(0.5, 0.04, 0.4), Props.mat(Color("#4a5642"), 0.6))
+	Props.box(root, Vector3(3.9, 0.7, 1.85), Vector3(0.04, 1.4, 0.04), Props.mat(Color("#4a5642"), 0.6))
+	Props.box(root, Vector3(3.9, 1.05, 1.87), Vector3(0.7, 0.6, 0.02), Props.mat(Color("#f4f3ec"), 0.8))
+	var notice := Props.label(root, "하자보수\n안내", Vector3(3.9, 1.06, 1.89), 30, Color("#3d5236"))
+	notice.pixel_size = 0.0042
+	# Hand pallet truck, plants, bench
+	Props.box(root, Vector3(1.9, 0.08, 1.7), Vector3(1.0, 0.06, 0.6), Props.mat(Color("#c94f3f"), 0.5, 0.3))
+	Props.box(root, Vector3(2.45, 0.5, 1.7), Vector3(0.06, 0.9, 0.06), Props.mat(Color("#2a2a2c"), 0.5))
+	_deco(root, "cardboardBoxClosed", Vector3(1.75, 0.11, 1.7), 0.2, 2.4)
+	Props.model(root, "pottedPlant", Vector3(-4.1, 0, 2.6))
+	_deco(root, "trashcan", Vector3(4.15, 0, -2.6))
+	return {
+		"size": size,
+		"spawn": Vector3(-0.3, 0, 2.2),
+		"npcs": {"park": park, "choi": choi},
+		"hotspots": [
+			_hs("schedule", "납품 일정표", Vector3(-2.75, 0, -1.65), Vector3(-2.75, 2.05, -2.95)),
+			_hs("park", "출고 준비 · 박 실장", Vector3(-1.3, 0, 1.4), Vector3(-1.6, 1.75, 0.55)),
+			_hs("inspect", "검수대 · 최 검수관", Vector3(0.85, 0, -0.25), Vector3(0.85, 1.75, -2.5)),
+			_hs("invoice", "대금 청구 단말", Vector3(3.5, 0, 0.1), Vector3(3.7, 1.95, -0.9)),
+			_hs("warranty", "하자보수 안내 (선택)", Vector3(3.2, 0, 1.95), Vector3(3.9, 1.75, 1.85)),
 		],
 	}
 
