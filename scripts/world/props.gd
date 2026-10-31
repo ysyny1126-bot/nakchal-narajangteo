@@ -7,22 +7,29 @@ const FONT_NAMES := ["Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", "Noto
 
 static var _materials := {}
 static var _textures := {}
-static var _font: SystemFont
-static var _font_bold: SystemFont
+static var _font: Font
+static var _font_bold: Font
 
 
-static func font(bold: bool = false) -> SystemFont:
+## Bundled Pretendard (SIL OFL 1.1) so Korean text renders on every platform,
+## including the web build where system fonts are unavailable.
+static func font(bold: bool = false) -> Font:
 	if bold:
 		if _font_bold == null:
-			_font_bold = SystemFont.new()
-			_font_bold.font_names = PackedStringArray(FONT_NAMES)
-			_font_bold.font_weight = 700
+			_font_bold = _load_font("res://fonts/Pretendard-Bold.otf", 700)
 		return _font_bold
 	if _font == null:
-		_font = SystemFont.new()
-		_font.font_names = PackedStringArray(FONT_NAMES)
-		_font.font_weight = 500
+		_font = _load_font("res://fonts/Pretendard-Medium.otf", 500)
 	return _font
+
+
+static func _load_font(path: String, weight: int) -> Font:
+	if ResourceLoader.exists(path):
+		return load(path)
+	var fallback := SystemFont.new()
+	fallback.font_names = PackedStringArray(FONT_NAMES)
+	fallback.font_weight = weight
+	return fallback
 
 
 static func mat(color: Color, roughness: float = 0.82, metallic: float = 0.0) -> StandardMaterial3D:

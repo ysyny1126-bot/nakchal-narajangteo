@@ -58,7 +58,11 @@ func play_music(room: String) -> void:
 	if _pending.has(room):
 		return
 	_pending[room] = true
-	WorkerThreadPool.add_task(_generate_music.bind(room))
+	if OS.has_feature("web") and not OS.has_feature("threads"):
+		# Single-threaded web build: compose on the main thread after the room appears.
+		call_deferred("_generate_music", room)
+	else:
+		WorkerThreadPool.add_task(_generate_music.bind(room))
 
 
 func _generate_music(room: String) -> void:

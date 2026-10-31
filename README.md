@@ -4,6 +4,19 @@ Godot 4.7.2로 만든 공공조달 업무 체험 3D 교육 시뮬레이션입니
 
 ![EP01 업체 사무실](screenshots/ep01_05_office_company_room.png)
 
+## 웹에서 플레이
+
+웹 빌드(`build/web/`)를 정적 서버로 열면 브라우저에서 플레이할 수 있습니다. GitHub Pages 배포 후 공개 주소를 여기에 적습니다.
+
+```sh
+python3 -m http.server 8765 --directory build/web
+# 브라우저에서 http://localhost:8765 열기
+```
+
+- 데스크톱 Chrome·Edge·Safari 최신 버전을 권장합니다. 키보드가 필요해 모바일은 지원하지 않습니다.
+- 첫 로딩에 약 40MB를 내려받습니다.
+- 진행 상황은 브라우저 저장소에 저장됩니다.
+
 ## 실행
 
 1. Godot 4.7.2 Project Manager에서 `project.godot`를 가져옵니다.
@@ -19,6 +32,15 @@ Godot 4.7.2로 만든 공공조달 업무 체험 3D 교육 시뮬레이션입니
 - 기준 해상도는 1280×720 캔버스이며, `canvas_items` 스트레치로 2560×1440까지 선명하게 확대됩니다.
 - 시연 영상은 `F11` 전체화면으로 녹화하는 것을 권장합니다.
 - 렌더러는 GL Compatibility입니다. 실시간 광원은 방향광 2개(그림자 1개)만 쓰고 후처리는 사용하지 않습니다.
+
+### 웹 빌드·배포
+
+```sh
+"/Users/yangsang-yun/Downloads/Godot.app/Contents/MacOS/Godot" --headless --path . --export-release "Web" build/web/index.html
+```
+
+- `export_presets.cfg`의 Web 프리셋은 GitHub Pages에서 바로 돌아가도록 단일 스레드(`thread_support=false`)로 내보냅니다.
+- 결과물 `build/web/`을 `gh-pages` 브랜치에 올리면 배포됩니다.
 
 ### 자동 캡처
 
@@ -113,10 +135,13 @@ screenshots/                      챕터·공간별 실행 캡처
 
 ## 에셋 출처와 한계
 
-- **외부 모델·텍스처·사운드·폰트 파일을 포함하지 않습니다.**
+- **외부 모델·텍스처·사운드 파일은 포함하지 않습니다.**
   - 3D 형태와 바닥 텍스처(나무·카펫·타일)는 모두 코드로 생성합니다.
   - 효과음과 배경음은 `sound_bank.gd`에서 사인파로 합성합니다.
-- **글꼴**: OS에 설치된 한글 글꼴(Apple SD Gothic Neo, Malgun Gothic, Noto Sans KR 등)을 `SystemFont`로 불러옵니다. 글꼴 파일은 배포하지 않습니다.
+- **글꼴**: [Pretendard](https://github.com/orioncactus/pretendard) v1.3.9 Medium·Bold
+  - © 2021 Kil Hyung-jin, SIL Open Font License 1.1
+  - 웹 빌드에서도 한글이 보이도록 `fonts/`에 포함했습니다.
+  - 라이선스 전문: [fonts/Pretendard-LICENSE.txt](fonts/Pretendard-LICENSE.txt)
 - **나라미·달이**: 사용자 제공 참고 이미지의 특징을 바탕으로 만든 절차 생성 메시입니다.
   - 나라미: 둥근 흰 몸, 하늘색 바이저, 검은 눈과 하이라이트, 주황 부리·발, 빨간 스카프, 어두운 날개 끝
   - 달이: 주황 머리와 귀, 이마 줄무늬 세 개, 흰 주둥이·배·꼬리 끝
