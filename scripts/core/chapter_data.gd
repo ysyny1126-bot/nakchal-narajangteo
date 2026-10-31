@@ -1,0 +1,129 @@
+extends RefCounted
+
+## Chapter goals, routes, briefings and step-by-step guidance text.
+
+const EP := {
+	1: {
+		"code": "EP01",
+		"title": "구매 규격과 입찰",
+		"goal": "공정한 구매 규격 작성부터 입찰 준비, 투찰·개찰, 적격심사까지 조달 한 건의 흐름을 경험합니다.",
+		"route": ["규격 검토", "공고·원가 확인", "투찰·개찰", "심사 결과"],
+		"role": "○○시청 구매 담당 → 한빛퍼니처 대표 (나라미)",
+		"situation": "시청이 회의용 탁자 50개를 구매합니다. 먼저 공무원 입장에서 구매 규격을 정하고, 이어서 업체 대표가 되어 입찰에 참여합니다.",
+		"learn": "특정 제품에 유리하지 않은 규격, 복수예비가격과 낙찰하한율, 적격심사가 왜 필요한지 이해합니다.",
+	},
+	2: {
+		"code": "EP02",
+		"title": "종합쇼핑몰",
+		"goal": "상품의 가격·납기·디자인과 판매촉진 선택이 매출과 이익에 미치는 영향을 비교합니다.",
+		"route": ["상품 등록", "구매 비교", "판매 방식 선택", "4분기 손익 확인"],
+		"role": "한빛퍼니처 대표 (나라미)",
+		"situation": "한빛퍼니처가 나라장터 종합쇼핑몰에 회의용 탁자를 등록합니다. 공공기관 구매 담당자는 여러 업체 상품을 비교해 고릅니다.",
+		"learn": "다수공급자계약(MAS) 상품의 가격·납기·품질이 선택받는 데 어떻게 작용하는지, 판매촉진이 손익에 주는 영향을 비교합니다.",
+	},
+}
+
+const STAGE := {
+	"city": 0, "office": 1, "result": 2, "review": 3, "ep1done": 4,
+	"register": 0, "compare": 1, "sale": 2, "sales": 3, "ep2done": 4,
+}
+
+const ROOM_OF := {
+	"city": "city", "office": "office", "result": "office", "review": "review", "ep1done": "review",
+	"register": "showroom", "compare": "showroom", "sale": "showroom", "sales": "showroom", "ep2done": "showroom",
+}
+
+## Which hotspot is the current objective.
+static func next_target(state: Dictionary) -> String:
+	var found: Array = state.get("found", [])
+	match str(state.step):
+		"city":
+			if not found.has("request"): return "request"
+			if not found.has("sample"): return "sample"
+			return "spec"
+		"office":
+			if not found.has("notice"): return "notice"
+			if not found.has("ledger"): return "ledger"
+			return "terminal"
+		"result": return "terminal"
+		"review":
+			if not found.has("criteria"): return "criteria"
+			if not found.has("binder"): return "binder"
+			return "submit"
+		"register": return "catalog"
+		"compare": return "buyer"
+		"sale", "sales": return "terminal"
+	return ""
+
+
+## Is a hotspot locked in the current state? Returns the reason or "".
+static func lock_reason(state: Dictionary, id: String) -> String:
+	var found: Array = state.get("found", [])
+	match id:
+		"spec":
+			if not (found.has("request") and found.has("sample")):
+				return "구매 요청서와 견본 탁자를 먼저 확인하세요."
+		"terminal":
+			if state.step == "office" and not (found.has("notice") and found.has("ledger")):
+				return "공고문과 원가 장부를 먼저 확인하세요."
+			if state.step in ["register", "compare"]:
+				return "상품 등록과 구매 비교를 먼저 마치세요."
+		"submit":
+			if not (found.has("criteria") and found.has("binder")):
+				return "심사 기준표와 제출 서류철을 먼저 확인하세요."
+		"buyer":
+			if state.step == "register":
+				return "한빛 상품을 먼저 등록하세요."
+	return ""
+
+
+static func objective(state: Dictionary) -> String:
+	var found: Array = state.get("found", [])
+	match str(state.step):
+		"city":
+			if not found.has("request"): return "구매 요청서를 읽고 무엇이 필요한지 확인하세요."
+			if not found.has("sample"): return "견본 탁자에서 확인할 성능 기준을 살펴보세요."
+			return "규격서 책상에서 구매 규격을 작성하세요."
+		"office":
+			var n := int(found.has("notice")) + int(found.has("ledger"))
+			if n < 2: return "공고문과 원가 장부를 확인하세요. (%d/2)" % n
+			return "입찰 단말에서 예비가격 2개를 고르고 투찰하세요."
+		"result": return "입찰 단말에서 개찰 결과를 확인하세요."
+		"review":
+			if not found.has("criteria"): return "심사 기준표에서 통과 점수를 확인하세요."
+			if not found.has("binder"): return "한빛 제출 서류철을 확인하세요."
+			return "서류 접수 창구에서 적격심사 서류를 제출하세요."
+		"ep1done": return "EP01 완료 · 종합쇼핑몰 업무로 이동합니다."
+		"register": return "한빛 상품 등록대에서 가격·납기·디자인을 정하세요."
+		"compare": return "구매 담당자와 함께 경쟁 상품을 비교하세요."
+		"sale": return "분기 판매 단말에서 상생세일 참여 여부를 정하세요."
+		"sales": return "분기 판매 단말에서 분기 실적을 확인하세요. (%d/4)" % (state.get("quarters", []) as Array).size()
+		"ep2done": return "EP02 완료 · 4분기 손익표를 확인했습니다."
+	return "타이틀에서 업무를 시작하세요."
+
+
+static func dali_line(state: Dictionary) -> String:
+	var found: Array = state.get("found", [])
+	match str(state.step):
+		"city":
+			if not found.has("request"): return "왼쪽 벽 화이트보드의 구매 요청서부터 읽어 봐요."
+			if not found.has("sample"): return "오른쪽 견본 탁자를 보면 어떤 성능을 적을지 감이 와요."
+			if not found.has("rules"): return "중앙 책상으로 가서 구매 규격 검토를 시작해요. 규정집도 참고할 수 있어요."
+			return "중앙 책상으로 가서 구매 규격 검토를 시작해요."
+		"office":
+			if not found.has("notice"): return "공고문과 원가 장부를 확인하면 입찰 단말이 열려요. 공고문은 왼쪽 벽이에요."
+			if not found.has("ledger"): return "책상 위 원가 장부로 가요. 원가를 알아야 손해 없이 투찰할 수 있어요."
+			return "준비 끝! 오른쪽 앞 입찰 단말로 가서 투찰해요."
+		"result": return "입찰 단말에서 결과를 다시 볼 수 있어요."
+		"review":
+			if not found.has("criteria"): return "뒤쪽 벽 심사 기준표에서 몇 점이면 통과인지 먼저 봐요."
+			if not found.has("binder"): return "왼쪽 탁자의 서류철로 가요. 실적이 충분한지 확인해야 해요."
+			if not found.has("archive"): return "실적이 조금 부족해 보여요. 오른쪽 보관함에 빠진 실제 기록이 있을지도 몰라요."
+			return "이제 접수 창구에서 서류를 제출해요. 사실대로가 원칙이에요."
+		"ep1done": return "EP01을 마쳤어요. 다음은 종합쇼핑몰이에요!"
+		"register": return "왼쪽 한빛 등록대에서 가격·납기·디자인을 정해요."
+		"compare": return "가운데 이 주무관에게 가서 경쟁 상품과 비교해 봐요."
+		"sale": return "오른쪽 판매 단말에서 상생세일에 참여할지 정해요."
+		"sales": return "판매 단말에서 다음 분기 실적을 확인해요."
+		"ep2done": return "수고했어요! 선택에 따라 손익이 어떻게 달라졌는지 비교해 봐요."
+	return "업무 시작을 누르면 함께 출발해요."
