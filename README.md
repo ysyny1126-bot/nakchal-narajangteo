@@ -46,19 +46,19 @@ python3 -m http.server 8765 --directory build/web
 
 ### 성공 과정 시연 영상
 
-`videos/`에 챕터별 이상적인 성공 루트를 실제 게임 화면으로 녹화한 영상이 있습니다(1920×1080, 30fps, 효과음·배경음 포함). EP03·퀴즈·돌발 상황·엔딩이 추가되기 전에 녹화한 영상이라 해당 장면은 들어 있지 않습니다.
+`videos/`에 챕터별 이상적인 성공 루트를 실제 게임 화면으로 녹화한 영상이 있습니다(1920×1080, 30fps, 효과음·배경음 포함). EP01은 조달청 로고·새 시작 화면이 들어간 최신 버전으로 다시 녹화했습니다(시연이라 퀴즈는 건너뜁니다). EP02는 EP03·퀴즈·돌발 상황·엔딩이 추가되기 전에 녹화한 영상입니다.
 
 | 파일 | 길이 | 내용 |
 |---|---|---|
 | `videos/ep01_success.mp4` | 1분 33초 | 시나리오 컷신 → 요청서·견본 조사 → 성능 중심 규격 → 공고·원가 확인 → 예비가격·투찰 1순위 → 보관함에서 실제 실적 발견 → 사실대로 제출, 적격심사 통과 |
 | `videos/ep02_success.mp4` | 57초 | 시나리오 컷신 → 균형형 등록 → 구매 비교 → 상생세일 참여 → 3분기 가격 인하 반영 → 4분기 손익표 |
 
-나라미가 자동 조작(autopilot)으로 실제 걸어가 조사·선택하며, 단계 자막과 시작·끝 타이틀 카드를 덧붙입니다. 다시 녹화하려면 1080p 창 크기를 지정하는 `override.cfg`를 잠시 두고 Godot 무비 라이터로 녹화한 뒤 ffmpeg로 MP4로 변환합니다.
+나라미가 자동 조작(autopilot)으로 실제 걸어가 조사·선택하며, 단계 자막과 시작·끝 타이틀 카드를 덧붙입니다. 다시 녹화하려면 1080p 창 크기를 지정하는 `override.cfg`를 잠시 두고 Godot 무비 라이터로 녹화한 뒤 Unity의 MediaEncoder(`unity_cinematic/Assets/Editor/AviToMp4.cs`)로 H.264 MP4로 변환합니다. 외부 도구가 필요 없습니다.
 
 ```sh
 printf '[display]\nwindow/size/window_width_override=1920\nwindow/size/window_height_override=1080\n' > override.cfg
 "/Users/yangsang-yun/Downloads/Godot.app/Contents/MacOS/Godot" --path . --fixed-fps 30 --write-movie build/video/ep01.avi -- --video=ep01
-ffmpeg -i build/video/ep01.avi -c:v libx264 -crf 20 -pix_fmt yuv420p -c:a aac videos/ep01_success.mp4
+/Applications/Unity/Hub/Editor/6000.6.7f1/Unity.app/Contents/MacOS/Unity -batchmode -projectPath unity_cinematic -executeMethod AviToMp4.Encode -quit -aviIn "$PWD/build/video/ep01.avi" -mp4Out "$PWD/videos/ep01_success.mp4"
 rm override.cfg
 ```
 
