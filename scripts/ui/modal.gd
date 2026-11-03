@@ -170,9 +170,12 @@ func shake() -> void:
 
 
 func _layout(scroll: ScrollContainer) -> void:
+	# A dialog reopened in the same frame frees the previous scroll box.
+	if not is_instance_valid(scroll):
+		return
 	var my_card := card
 	await get_tree().process_frame
-	if not is_instance_valid(my_card) or my_card != card:
+	if not is_instance_valid(my_card) or my_card != card or not is_instance_valid(scroll) or scroll.get_parent() != my_card:
 		return
 	var area := Hud.play_area()
 	var view := Vector2(1280, 720)

@@ -168,10 +168,11 @@ func _compose(room: String) -> AudioStreamWAV:
 		"review": [[57, 60, 64, 69], [53, 57, 60, 65], [48, 52, 55, 60], [55, 59, 62, 67]],
 		"showroom": [[62, 66, 69, 74], [59, 62, 66, 71], [55, 59, 62, 67], [57, 61, 64, 69]],
 		"warehouse": [[55, 59, 62, 67], [52, 55, 59, 64], [48, 52, 55, 60], [50, 54, 57, 62]],
+		"pps_office": [[60, 64, 67, 72], [57, 60, 64, 69], [53, 57, 60, 65], [55, 59, 62, 67]],
 		"ending": [[60, 64, 67, 72], [55, 59, 62, 67], [57, 60, 64, 69], [53, 57, 60, 65]],
 		"ending_sad": [[57, 60, 64, 69], [53, 57, 60, 65], [50, 53, 57, 62], [52, 56, 59, 64]],
 	}
-	var bpm: float = {"city": 92.0, "office": 100.0, "review": 84.0, "showroom": 108.0, "warehouse": 96.0, "ending": 76.0, "ending_sad": 66.0}.get(room, 96.0)
+	var bpm: float = {"city": 92.0, "office": 100.0, "review": 84.0, "showroom": 108.0, "warehouse": 96.0, "pps_office": 104.0, "ending": 76.0, "ending_sad": 66.0}.get(room, 96.0)
 	var chords: Array = progressions.get(room, progressions.city)
 	var beat := 60.0 / bpm
 	var bar := beat * 4.0

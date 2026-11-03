@@ -19,11 +19,17 @@ const Events = preload("res://scripts/core/events.gd")
 const TouchControls = preload("res://scripts/ui/touch_controls.gd")
 const TitleScreen = preload("res://scripts/ui/title_screen.gd")
 const DeskScreen = preload("res://scripts/ui/desk_screen.gd")
+const Desk = preload("res://scripts/core/desk_items.gd")
+const CareerScreen = preload("res://scripts/career/career_screen.gd")
+const Career = preload("res://scripts/core/career_data.gd")
 
 const SAVE_PATH := "user://nakchal-save.json"
 const SAVE_VERSION := 4
 ## Achievements, endings, glossary and settings survive new games.
 const PROFILE_PATH := "user://nakchal-profile.json"
+## 조달청 사원 키우기 progress (the main mode since v2.0).
+const CAREER_PATH := "user://nakchal-career.json"
+const CAREER_VERSION := 1
 const LATE_RATE := 0.00075
 const MOVE_SPEED := 2.5
 const INTERACT_RANGE := 0.9
@@ -67,6 +73,9 @@ var _summary_ep := 0
 var _term_card: Control
 var _title_screen: Control
 var _desk: Control
+## Career state ({} until a career starts) and its screen.
+var career := {}
+var _career: Control
 var _splash_shown := false
 ## Keeps the ending scene still while its final dialog is open.
 var ending_hold := false
@@ -84,6 +93,7 @@ func _ready() -> void:
 	add_child(sound)
 	_apply_settings(false)
 	_load_save()
+	_career_load()
 	_enter_room("city", false)
 	_show_title()
 	for arg in OS.get_cmdline_user_args():
@@ -343,7 +353,7 @@ func _can_move() -> bool:
 
 
 func _physics_process(delta: float) -> void:
-	if title_layer.visible or in_cutscene or ending_hold:
+	if title_layer.visible or in_cutscene or ending_hold or is_instance_valid(_career):
 		return
 	var direction := Vector3.ZERO
 	if _can_move():
@@ -457,10 +467,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if is_instance_valid(_title_screen):
 			_title_screen.skip_splash()
 		if key in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE]:
-			if int(state.episode) > 0: _continue_game()
-			else: _request_new_game()
-		elif key == KEY_1: _request_new_game()
-		elif key == KEY_2: _continue_game()
+			if _career_resumable(): _career_continue()
+			else: _career_request_new()
+		elif key == KEY_1: _career_request_new()
+		elif key == KEY_2: _career_continue()
 		elif key == KEY_3: _show_settings()
 		elif key == KEY_4: _show_collection()
 		elif key == KEY_T: _show_terms()
@@ -504,12 +514,16 @@ func _show_title() -> void:
 	_stage_title()
 	var screen := TitleScreen.new()
 	title_layer.add_child(screen)
-	var has_save := int(state.episode) > 0
-	var save_text := "%s · %s" % [Chapters.EP[int(state.episode)].code, Chapters.EP[int(state.episode)].title] if has_save else ""
-	var record := "엔딩 %d/%d · 업적 %d/%d · 용어 도감 %d/%d" % [(profile.endings as Array).size(), Endings.ENDINGS.size(), (profile.achievements as Array).size(), Endings.ACHIEVEMENTS.size(), (profile.terms as Array).size(), Glossary.TERMS.size()]
+	var has_save := _career_resumable()
+	var save_text := ""
+	if has_save:
+		var info: Dictionary = Career.EPISODES[int(career.ep)]
+		save_text = "%s · %s · %s" % [info.code, info.title, Career.RANKS[int(career.rank)].split(" ")[0]]
+	var record := "사원 엔딩 %d/%d · 용어 도감 %d/%d" % [(profile.get("career_endings", []) as Array).size(), Career.ENDINGS.size(), (profile.terms as Array).size(), Glossary.TERMS.size()]
 	screen.build(has_save, save_text, record)
-	screen.start_pressed.connect(_request_new_game)
-	screen.continue_pressed.connect(_continue_game)
+	screen.start_pressed.connect(_career_request_new)
+	screen.continue_pressed.connect(_career_continue)
+	screen.legacy_pressed.connect(_legacy_start)
 	screen.settings_pressed.connect(_show_settings)
 	screen.collection_pressed.connect(_show_collection)
 	screen.terms_pressed.connect(_show_terms)
@@ -2454,18 +2468,199 @@ func _show_desk() -> void:
 		return
 	modal.close()
 	var screen := DeskScreen.new()
-	title_layer.add_child(screen)
-	screen.build(profile.desk)
+	var host := modal.get_parent()
+	host.add_child(screen)
+	host.move_child(screen, modal.get_index())
+	var in_career := is_instance_valid(_career)
+	screen.build(career.desk if in_career or _career_resumable() else profile.desk)
 	screen.sfx.connect(func(name: String) -> void: sound.play(name))
-	screen.changed.connect(_save_profile)
+	screen.changed.connect(func() -> void:
+		_save_profile()
+		_career_write())
+	screen.used.connect(_career_use_item)
 	screen.closed.connect(func() -> void:
 		screen.queue_free()
-		if is_instance_valid(_title_screen):
+		if is_instance_valid(_career):
+			_career_stage()
+			_career.refresh()
+		elif is_instance_valid(_title_screen):
 			_title_screen.visible = true)
 	if is_instance_valid(_title_screen):
 		_title_screen.visible = false
 	_desk = screen
 	sound.play("open")
+
+
+# --- 조달청 사원 키우기 ------------------------------------------------------------------
+
+func _career_new_state(player_name: String) -> Dictionary:
+	return {
+		"version": CAREER_VERSION, "name": player_name, "seed": randi() % 100000,
+		"ep": 1, "day": 1, "phase": "brief", "rank": 1, "salary": Career.SALARY[1],
+		"perf": 0, "integrity": 80, "stamina": Career.STAMINA_MAX, "ap": Career.AP, "ap_max": Career.AP,
+		"hand": [], "carry": {}, "quick_log": [], "lapses": [], "notes": 0,
+		"done_count": 0, "today_done": 0, "today_total": 0, "today_perf": 0, "lapse_today": 0,
+		"ep_perf": 0, "ep_mistakes": 0, "total_mistakes": 0, "burnouts": 0, "s_count": 0,
+		"boss_done": false, "overtime": false, "used": {}, "ramen_debt": false, "lamp_used": false,
+		"audited": false, "new_items": [], "results": [], "ending": "",
+		"desk": {"points": 300, "rank": 1, "owned": {}, "earned": []},
+	}
+
+
+func _career_resumable() -> bool:
+	return not career.is_empty() and str(career.get("phase", "")) != "final"
+
+
+func _career_load() -> void:
+	if not FileAccess.file_exists(CAREER_PATH) or _dev_mode():
+		return
+	var file := FileAccess.open(CAREER_PATH, FileAccess.READ)
+	if not file:
+		return
+	var data = JSON.parse_string(file.get_as_text())
+	file.close()
+	if typeof(data) == TYPE_DICTIONARY and int(data.get("version", 0)) == CAREER_VERSION:
+		career = data
+
+
+func _career_write() -> void:
+	if career.is_empty() or _dev_mode():
+		return
+	var file := FileAccess.open(CAREER_PATH, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(career))
+		file.close()
+
+
+## New career from the title: confirm when it would replace one in progress, then ask a name.
+func _career_request_new() -> void:
+	if _career_resumable() and not modal.is_open():
+		modal.open({"kicker": "새로 시작", "title": "처음부터 다시 시작할까요?", "body": "진행 중인 [b]%s %s[/b]의 기록이 지워집니다. 엔딩·용어 도감 기록은 남아요." % [Career.RANKS[int(career.rank)], career.name], "accent": UI.ORANGE, "buttons": [{"label": "새로 시작하기", "id": "career_new_ok"}, {"label": "돌아가기", "id": "close", "primary": false}]})
+		sound.play("open")
+		return
+	_career_ask_name()
+
+
+func _career_ask_name() -> void:
+	var custom := modal.open({"kicker": "조달청 신규 임용", "accent": UI.NAVY, "title": "이름을 알려 주세요", "body": "오늘부터 조달청 [b]9급 서기보[/b]로 일하게 됐어요. 명패와 사원증에 들어갈 이름이에요.", "width": 520})
+	var edit := LineEdit.new()
+	edit.name = "NameEdit"
+	edit.placeholder_text = "김조달"
+	edit.max_length = 8
+	edit.custom_minimum_size = Vector2(0, 44)
+	edit.add_theme_font_size_override("font_size", UI.px(18))
+	edit.add_theme_color_override("font_color", UI.INK)
+	edit.add_theme_color_override("font_placeholder_color", UI.MUTED)
+	edit.add_theme_color_override("caret_color", UI.ORANGE)
+	edit.add_theme_stylebox_override("normal", UI.panel(Color.WHITE, Color("#d9cfbd"), 8, 12, 2))
+	edit.add_theme_stylebox_override("focus", UI.panel(Color.WHITE, UI.ORANGE, 8, 12, 2))
+	edit.text_submitted.connect(func(_t: String) -> void: _on_choice("career_name_ok", {}))
+	custom.add_child(edit)
+	modal.add_buttons([{"label": "이 이름으로 출근하기", "id": "career_name_ok"}, {"label": "취소", "id": "close", "primary": false}])
+	edit.call_deferred("grab_focus")
+	sound.play("open")
+
+
+func _career_name_entered() -> void:
+	var edit := modal.find_child("NameEdit", true, false) as LineEdit
+	var player_name := edit.text.strip_edges() if edit else ""
+	if player_name.is_empty():
+		player_name = "김조달"
+	modal.close()
+	career = _career_new_state(player_name)
+	_career_write()
+	_career_open(true)
+
+
+func _career_continue() -> void:
+	if not _career_resumable():
+		_career_request_new()
+		return
+	_career_open(false)
+
+
+func _career_open(fresh: bool) -> void:
+	game_active = false
+	title_layer.visible = false
+	hud.visible = false
+	touch.visible = false
+	if is_instance_valid(_career):
+		_career.queue_free()
+	_career_stage()
+	var screen := CareerScreen.new()
+	var host := modal.get_parent()
+	host.add_child(screen)
+	host.move_child(screen, modal.get_index())
+	screen.setup(self, career)
+	_career = screen
+	if fresh:
+		screen.begin_episode()
+	else:
+		screen.resume()
+
+
+## Builds the PPS office with this employee's department, name plate and desk items.
+func _career_stage() -> void:
+	var info: Dictionary = Career.EPISODES[clampi(int(career.ep), 1, 3)]
+	RoomBuilder.office_dept = info.dept
+	RoomBuilder.office_name = "%s  %s" % [Career.RANKS[int(career.rank)].split(" ")[0], career.name]
+	var items := []
+	for id in Desk.ORDER:
+		if Desk.count(id, career.desk) > 0:
+			items.append(id)
+	RoomBuilder.office_items = items
+	_enter_room("pps_office", false)
+	for marker in markers:
+		marker.visible = false
+	# Nareumi stands beside the desk so both she and the desk items are in view.
+	player.global_position = Vector3(1.15, 0, 1.1)
+	dali_body.global_position = Vector3(1.85, 0, 1.35)
+	narami.face_direction(Vector3(-0.25, 0, 1))
+	dali.face_direction(Vector3(-0.45, 0, 1))
+	narami.set_moving(false)
+	dali.set_moving(false)
+	cine_cam.fov = 36.0
+	cine_cam.global_position = Vector3(0.45, 3.0, 6.7)
+	cine_cam.look_at(Vector3(0.45, 0.5, 0.45))
+	cine_cam.h_offset = 1.0
+	cine_cam.v_offset = -0.25
+	cine_cam.current = true
+	sound.play_music("pps_office")
+
+
+func _career_home() -> void:
+	if is_instance_valid(_career):
+		_career.queue_free()
+	_career = null
+	cine_cam.h_offset = 0.0
+	cine_cam.v_offset = 0.0
+	modal.close()
+	_show_title()
+
+
+## Snacks eaten from the desk screen during a career.
+func _career_use_item(id: String) -> void:
+	if not is_instance_valid(_career):
+		return
+	match id:
+		"coffee": career.stamina = mini(Career.STAMINA_MAX, int(career.stamina) + 1)
+		"vitamin": career.stamina = mini(Career.STAMINA_MAX, int(career.stamina) + 2)
+		"ramen":
+			career.ap = int(career.ap) + 1
+			career.ap_max = maxi(int(career.ap_max), int(career.ap))
+			career.ramen_debt = true
+		"tangerine":
+			career.perf = int(career.perf) + 1
+			career.ep_perf = int(career.ep_perf) + 1
+	_career_write()
+
+
+## The earlier company-side game (업체 편).
+func _legacy_start() -> void:
+	if int(state.episode) > 0:
+		_continue_game()
+	else:
+		_request_new_game()
 
 
 func _check_achievements(extra: Array = []) -> void:
@@ -2632,6 +2827,10 @@ func _on_choice(id: String, _option: Dictionary) -> void:
 		"insp_fix", "insp_gift", "insp_argue": _resolve_inspection(id)
 		"inv_exact", "inv_inflate": _resolve_invoice(id)
 		"share_card": _save_share_card()
+		"career_new_ok":
+			modal.close()
+			_career_ask_name()
+		"career_name_ok": _career_name_entered()
 		"collection": _show_collection()
 		_:
 			if id.begins_with("ev2_") or id.begins_with("ev3_"):

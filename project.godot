@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="낙찰! 나라장터 생존기"
-config/description="공공조달의 업무 현장을 직접 탐색하며 경험하는 3D 교육 시뮬레이션"
+config/name="낙찰! 조달청 사원 키우기"
+config/description="조달청 신규 주무관이 실제 조달 업무를 처리하며 성장하는 교육 시뮬레이션"
 run/main_scene="res://scenes/main.tscn"
 boot_splash/bg_color=Color(1, 1, 1, 1)
 boot_splash/image="res://assets/brand/boot_splash.png"

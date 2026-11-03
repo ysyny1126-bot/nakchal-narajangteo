@@ -11,10 +11,11 @@ signal settings_pressed
 signal collection_pressed
 signal terms_pressed
 signal desk_pressed
+signal legacy_pressed
 
 const LOGO_H := preload("res://assets/brand/pps_lockup_h.png")
 const LOGO_V := preload("res://assets/brand/pps_lockup_v.png")
-const VERSION := "v1.3"
+const VERSION := "v2.0"
 
 var _logo: Control
 var _start: Button
@@ -75,7 +76,7 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	_logo.position = Vector2(640, 172)
 	_logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_logo)
-	var kicker := _outlined("공공조달 체험 어드벤처", 18, Color("#fff3d6"), Color("#1f3d4a"), 6)
+	var kicker := _outlined("공공조달 업무 성장 시뮬레이션", 18, Color("#fff3d6"), Color("#1f3d4a"), 6)
 	_center(kicker, Vector2(0, -124))
 	_logo.add_child(kicker)
 	var big := _outlined("낙찰!", 112, Color("#ffb03a"), Color("#1c3540"), 22)
@@ -93,7 +94,7 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	ribbon_style.shadow_size = 8
 	ribbon_style.shadow_offset = Vector2(0, 5)
 	ribbon.add_theme_stylebox_override("panel", ribbon_style)
-	var sub := _outlined("나라장터 생존기", 40, Color("#ffffff"), Color("#1f3d4a"), 4)
+	var sub := _outlined("조달청 사원 키우기", 40, Color("#ffffff"), Color("#1f3d4a"), 4)
 	ribbon.add_child(sub)
 	ribbon.reset_size()
 	ribbon.position = Vector2(-ribbon.get_combined_minimum_size().x * 0.5, 34)
@@ -123,8 +124,18 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	chapters.add_theme_constant_override("separation", 6)
 	chapters.position = Vector2(22, 720 - 32)
 	add_child(chapters)
-	for item in [["EP01 구매 규격·입찰", Color("#1f3d4a")], ["EP02 종합쇼핑몰", Color("#2f6f80")], ["EP03 납품·검수", Color("#3d5236")]]:
+	for item in [["EP1 첫 출근 · 규격·입찰", Color("#1f3d4a")], ["EP2 쇼핑몰 지킴이", Color("#2f6f80")], ["EP3 현장으로 · 납품·검사", Color("#3d5236")]]:
 		chapters.add_child(UI.chip(item[0], item[1], Color.WHITE, 12))
+	# The earlier company-side game stays playable as a bonus.
+	var legacy := Button.new()
+	legacy.text = "업체 편 체험 (이전 버전)"
+	legacy.focus_mode = Control.FOCUS_NONE
+	legacy.flat = true
+	legacy.add_theme_font_size_override("font_size", 12)
+	legacy.add_theme_color_override("font_color", Color("#d7eef2"))
+	legacy.add_theme_color_override("font_hover_color", Color("#ffd9b8"))
+	legacy.pressed.connect(func() -> void: legacy_pressed.emit())
+	chapters.add_child(legacy)
 	var info := VBoxContainer.new()
 	info.add_theme_constant_override("separation", 0)
 	info.position = Vector2(1280 - 22 - 360, 720 - 37)

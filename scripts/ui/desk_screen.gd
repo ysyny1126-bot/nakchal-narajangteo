@@ -13,6 +13,8 @@ const DaliIcon = preload("res://scripts/ui/dali_icon.gd")
 signal closed
 signal sfx(name: String)
 signal changed
+## A snack was eaten (main applies its effect to the career).
+signal used(id: String)
 
 const MINT := Color("#4fb79e")
 const MINT_DARK := Color("#2f8a78")
@@ -571,6 +573,7 @@ func _on_use() -> void:
 	sfx.emit("success")
 	_pop = 1.0
 	changed.emit()
+	used.emit(selected)
 	_refresh()
 	_bubble.text = "%s 냠! %s" % [item.name, item.effect]
 

@@ -79,9 +79,98 @@ func _desk_shots() -> void:
 	await _wait(5)
 
 
+## 조달청 사원 키우기: briefing, a day of cards, a card and its result, the boss,
+## audit, promotion, a later episode with an earned desk, and the final ending.
+func _career_shots() -> void:
+	game._career_ask_name()
+	await _wait(20)
+	await _shot("career_00_name")
+	(game.modal.find_child("NameEdit", true, false) as LineEdit).text = "김조달"
+	game._career_name_entered()
+	await _wait(40)
+	await _shot("career_01_briefing")
+	var cs: Control = game._career
+	cs._on_choice("c_start", {})
+	await _wait(40)
+	await _shot("career_02_day1")
+	cs._open_card("e1_spec")
+	await _wait(20)
+	await _shot("career_03_card")
+	cs._on_choice("c_pick:careful", {})
+	await _wait(20)
+	await _shot("career_04_result")
+	cs._after_card()
+	cs._open_card("e1_call")
+	cs._on_choice("c_pick:quick", {})
+	cs._after_card()
+	cs._open_card("e1_date")
+	cs._on_choice("c_pick:quick", {})
+	cs._after_card()
+	await _wait(20)
+	cs._end_day()
+	await _wait(20)
+	await _shot("career_05_day_end")
+	# Day 2: lure taken the easy way so the audit has something to say.
+	cs._on_choice("c_next_day", {})
+	for pick in [["e1_basis", "careful"], ["e1_dinner", "easy"], ["e1_reserve", "quick"]]:
+		cs._open_card(pick[0])
+		cs._on_choice("c_pick:" + pick[1], {})
+		cs._after_card()
+	cs._end_day()
+	cs._on_choice("c_next_day", {})
+	await _wait(30)
+	await _shot("career_06_day3")
+	for pick in [["e1_open", "careful"], ["e1_coffee", "bonus"], ["e1_protest", "quick"]]:
+		cs._open_card(pick[0])
+		cs._on_choice("c_pick:" + pick[1], {})
+		cs._after_card()
+	cs._end_day()
+	cs._on_choice("c_boss", {})
+	await _wait(20)
+	await _shot("career_07_boss")
+	cs._on_choice("c_boss_pick:careful", {})
+	cs._on_choice("c_boss_next", {})
+	cs._on_choice("c_boss_pick:careful", {})
+	cs._on_choice("c_audit", {})
+	await _wait(20)
+	await _shot("career_08_audit")
+	cs._on_choice("c_quiz", {})
+	for i in range(3):
+		cs._on_choice("c_quiz_answer:%d" % int(preload("res://scripts/core/glossary.gd").QUIZ[1][i].answer), {})
+		cs._on_choice("c_quiz_next" if i < 2 else "c_promote", {})
+	await _wait(60)
+	await _shot("career_09_promotion")
+	cs._after_appointment()
+	await _wait(40)
+	game.modal.close()
+	cs.start_day()
+	await _wait(30)
+	await _shot("career_10_ep2_office")
+	# Jump to the end of EP3 for the finale.
+	game.career.ep = 3
+	game.career.rank = 4
+	game.career.salary = 4250
+	game.career.results = [{"ep": 1, "grade": "A", "perf": 9, "mistakes": 1, "lapses": 1, "quiz": 3}, {"ep": 2, "grade": "S", "perf": 13, "mistakes": 0, "lapses": 0, "quiz": 3}, {"ep": 3, "grade": "S", "perf": 12, "mistakes": 0, "lapses": 0, "quiz": 2}]
+	game.career.s_count = 2
+	game.career.integrity = 88
+	game.career.desk.earned = ["law_book", "magnifier", "trophy"]
+	game.career.desk.owned = {"plant": 1, "lamp": 1, "coffee": 1}
+	game._career_stage()
+	cs._final()
+	await _wait(80)
+	await _shot("career_11_final")
+	game._career_home()
+	await _wait(30)
+	await _shot("career_12_title")
+
+
 func _run() -> void:
 	await _wait(40)
 	await _shot("00_title")
+	if OS.get_cmdline_user_args().has("--career"):
+		await _career_shots()
+		get_tree().quit()
+		return
 	if OS.get_cmdline_user_args().has("--desk"):
 		await _desk_shots()
 		get_tree().quit()

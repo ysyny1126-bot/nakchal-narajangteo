@@ -10,6 +10,12 @@ const Npc = preload("res://scripts/actors/npc_actor.gd")
 
 const WALL_H := 2.2
 
+## 조달청 사원 키우기 office: department on the sign, the player's name plate
+## and the desk items they have (ids from desk_items.gd).
+static var office_dept := "구매사업국 · 물품구매과"
+static var office_name := ""
+static var office_items: Array = []
+
 
 static func build(room: String, root: Node3D) -> Dictionary:
 	match room:
@@ -18,6 +24,7 @@ static func build(room: String, root: Node3D) -> Dictionary:
 		"showroom": return _showroom(root)
 		"warehouse": return _warehouse(root)
 		"title": return _title(root)
+		"pps_office": return _pps_office(root)
 		_: return _office(root)
 
 
@@ -27,6 +34,7 @@ static func title_of(room: String) -> String:
 		"review": return "조달청 · 적격심사실"
 		"showroom": return "나라장터 · 종합쇼핑몰"
 		"warehouse": return "○○시청 별관 · 납품 검수장"
+		"pps_office": return "조달청 · " + office_dept
 		_: return "한빛퍼니처 · 업체 사무실"
 
 
@@ -552,3 +560,78 @@ static func _title(root: Node3D) -> Dictionary:
 	Props.model(root, "pottedPlant", Vector3(4.3, 0, -0.6), 0.0, 2.2, false)
 	Props.model(root, "books", Vector3(0.9, 0.31, 0.5), 0.4, 2.4, false)
 	return {"size": Vector2(10.0, 6.0), "spawn": Vector3(1.75, 0.3, 0.25), "npcs": {}, "hotspots": []}
+
+
+# --- 조달청 사원 키우기: the player's PPS office ------------------------------------
+
+static func _pps_office(root: Node3D) -> Dictionary:
+	var size := Vector2(8.0, 6.0)
+	_shell(root, size, Props.surface_mat("oak_wood_planks", Color("#d9cbb6"), 2.0, 0.7), Color("#d7dcdc"), Color("#3f5566"), Color("#2c3e4c"))
+	_room_sign(root, size, "조달청 · " + office_dept, Color("#24435a"), 0.5)
+	var emblem := Sprite3D.new()
+	emblem.texture = load("res://assets/brand/pps_emblem.png")
+	emblem.pixel_size = 0.00084
+	emblem.shaded = false
+	emblem.position = Vector3(-1.75, 1.86, -size.y * 0.5 + 0.03)
+	root.add_child(emblem)
+	Props.wall_board(root, Vector3(2.85, 1.25, -2.95), Vector2(1.6, 1.0), Color("#24435a"), Color("#eef1f2"), "우리 과 약속", "공정 · 투명 · 청렴\n세금은 아껴 씁니다", Color("#24435a"))
+	Props.wall_board(root, Vector3(-3.0, 1.25, -2.95), Vector2(1.4, 1.0), Color("#7a5a3c"), Color("#f6efdc"), "이달의 일정", "공고 · 개찰 · 심사\n금요일 감사 주간", Color("#c4643b"))
+	# Team lead at the back, colleague on the left.
+	Props.desk(root, Vector3(0.6, 0, -1.9), 1.7, 0.8, Color("#a7825c"))
+	Props.monitor(root, Vector3(1.05, 0.72, -1.95), Color("#4b7896"), "", PI + 0.3)
+	Props.document(root, Vector3(0.25, 0.73, -1.8), Vector2(0.36, 0.26), Color("#24435a"), "", 0.2, 3)
+	var lead := _npc(root, "팀장", Vector3(0.6, 0, -2.5), Color("#2f4f6a"), Color("#3a3330"), 0.0, Color("#e0c46a"))
+	Props.desk(root, Vector3(-2.55, 0, -1.3), 1.5, 0.8, Color("#b38c63"))
+	Props.monitor(root, Vector3(-2.3, 0.72, -1.4), Color("#6fa0b8"), "", PI - 0.4)
+	var peer := _npc(root, "최 주무관", Vector3(-2.55, 0, -1.95), Color("#6b7d5a"), Color("#231f1d"), 0.0, Color("#d8b25a"))
+	for i in range(3):
+		_deco(root, "bookcaseClosedDoors", Vector3(3.72, 0, -1.4 + i * 0.8), -PI * 0.5)
+	Props.add_collider(root, Vector3(3.72, 0, -0.6), Vector3(0.5, 1.0, 2.4))
+	Props.model(root, "sideTableDrawers", Vector3(-3.7, 0, 0.6), PI * 0.5)
+	_deco(root, "kitchenCoffeeMachine", Vector3(-3.7, 0.74, 0.5), PI * 0.5)
+	Props.model(root, "pottedPlant", Vector3(-3.6, 0, 2.3))
+	_deco(root, "trashcan", Vector3(2.9, 0, 0.2))
+	_rug(root, Vector3(-0.2, 0, 0.75), Vector2(3.2, 2.0), Color("#3f5566"), Color("#c9a24c"))
+	# The player's desk faces the camera so what they have earned is on show.
+	var desk_pos := Vector3(-0.2, 0, 1.05)
+	Props.desk(root, desk_pos, 1.9, 0.8, Color("#c9a77c"))
+	Props.chair(root, desk_pos + Vector3(0, 0, -0.75), Color("#3f5566"), 0.0)
+	Props.monitor(root, desk_pos + Vector3(-0.62, 0.72, -0.18), Color("#4b7896"), "", PI - 0.5)
+	if office_items.has("dual_monitor"):
+		Props.monitor(root, desk_pos + Vector3(0.62, 0.72, -0.18), Color("#5aa469"), "", PI + 0.5)
+	var plate := Node3D.new()
+	plate.position = desk_pos + Vector3(0, 0.5, 0.42)
+	root.add_child(plate)
+	var gold := office_items.has("nameplate")
+	Props.box(plate, Vector3.ZERO, Vector3(0.9, 0.18, 0.02), Props.mat(Color("#c6963f") if gold else Color("#24435a"), 0.5))
+	var name_label := Props.label(plate, office_name, Vector3(0, 0, 0.015), 34, Color("#1f2a30") if gold else Color("#fbf6ea"))
+	name_label.pixel_size = 0.0034
+	var slots := {
+		"calculator": Vector3(-0.55, 0, 0.22), "planner": Vector3(-0.2, 0, 0.25), "stamp": Vector3(0.12, 0, 0.24),
+		"clock": Vector3(0.45, 0, 0.18), "law_book": Vector3(-0.85, 0, 0.12), "highlighter": Vector3(0.72, 0, 0.27),
+		"magnifier": Vector3(-0.05, 0, 0.0), "trophy": Vector3(0.82, 0, -0.08), "lamp": Vector3(-0.35, 0, -0.12),
+		"coffee": Vector3(0.32, 0, -0.05),
+	}
+	for id in slots:
+		if office_items.has(id):
+			_desk_sprite(root, id, desk_pos + Vector3(0, 0.72, 0) + slots[id], 0.0011)
+	if office_items.has("plant"):
+		_desk_sprite(root, "plant", desk_pos + Vector3(-1.35, 0, 0.1), 0.0024)
+	return {
+		"size": size,
+		"spawn": desk_pos + Vector3(-0.15, 0, -0.62),
+		"npcs": {"lead": lead, "peer": peer},
+		"hotspots": [],
+	}
+
+
+## Unity-rendered item icon standing on the desk, always facing the camera.
+static func _desk_sprite(root: Node3D, id: String, base: Vector3, pixel: float) -> void:
+	var sprite := Sprite3D.new()
+	sprite.texture = load("res://assets/items/%s.png" % id)
+	sprite.pixel_size = pixel
+	sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	sprite.shaded = false
+	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_OPAQUE_PREPASS
+	sprite.position = base + Vector3(0, 160 * pixel * 0.86, 0)
+	root.add_child(sprite)
