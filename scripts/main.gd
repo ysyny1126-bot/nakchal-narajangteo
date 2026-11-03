@@ -18,6 +18,7 @@ const Endings = preload("res://scripts/core/endings.gd")
 const Events = preload("res://scripts/core/events.gd")
 const TouchControls = preload("res://scripts/ui/touch_controls.gd")
 const TitleScreen = preload("res://scripts/ui/title_screen.gd")
+const DeskScreen = preload("res://scripts/ui/desk_screen.gd")
 
 const SAVE_PATH := "user://nakchal-save.json"
 const SAVE_VERSION := 4
@@ -60,11 +61,12 @@ var autopilot := Vector3.ZERO
 var skip_quiz := false
 var skip_events := false
 var touch: Control
-var profile := {"achievements": [], "endings": [], "terms": [], "settings": {"text": 1.0, "cutscene": 1.0, "music": 0.8, "sfx": 0.8, "touch": "auto"}}
+var profile := {"achievements": [], "endings": [], "terms": [], "settings": {"text": 1.0, "cutscene": 1.0, "music": 0.8, "sfx": 0.8, "touch": "auto"}, "desk": {"points": 1000, "rank": 1, "owned": {}, "earned": []}}
 var _quiz := {}
 var _summary_ep := 0
 var _term_card: Control
 var _title_screen: Control
+var _desk: Control
 var _splash_shown := false
 ## Keeps the ending scene still while its final dialog is open.
 var ending_hold := false
@@ -449,6 +451,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var mode := DisplayServer.window_get_mode()
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if mode == DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_FULLSCREEN)
 		return
+	if is_instance_valid(_desk):
+		return
 	if title_layer.visible and not modal.is_open():
 		if is_instance_valid(_title_screen):
 			_title_screen.skip_splash()
@@ -460,6 +464,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key == KEY_3: _show_settings()
 		elif key == KEY_4: _show_collection()
 		elif key == KEY_T: _show_terms()
+		elif key == KEY_5: _show_desk()
 		return
 	if modal.is_open():
 		if key == KEY_ESCAPE and modal.dismissable:
@@ -508,6 +513,7 @@ func _show_title() -> void:
 	screen.settings_pressed.connect(_show_settings)
 	screen.collection_pressed.connect(_show_collection)
 	screen.terms_pressed.connect(_show_terms)
+	screen.desk_pressed.connect(_show_desk)
 	_title_screen = screen
 	var splash := not _splash_shown and not _dev_mode()
 	_splash_shown = true
@@ -2441,6 +2447,27 @@ func _show_collection() -> void:
 		modal.add_buttons([{"label": "닫기", "id": "close"}])
 
 
+## "내 책상" (preview of 조달청 사원 키우기): issued supplies, skills and the
+## in-house store. Opens over the title.
+func _show_desk() -> void:
+	if is_instance_valid(_desk):
+		return
+	modal.close()
+	var screen := DeskScreen.new()
+	title_layer.add_child(screen)
+	screen.build(profile.desk)
+	screen.sfx.connect(func(name: String) -> void: sound.play(name))
+	screen.changed.connect(_save_profile)
+	screen.closed.connect(func() -> void:
+		screen.queue_free()
+		if is_instance_valid(_title_screen):
+			_title_screen.visible = true)
+	if is_instance_valid(_title_screen):
+		_title_screen.visible = false
+	_desk = screen
+	sound.play("open")
+
+
 func _check_achievements(extra: Array = []) -> void:
 	if _dev_mode():
 		return
@@ -2487,6 +2514,8 @@ func _load_profile() -> void:
 			profile[key] = data[key]
 	if data.get("settings") is Dictionary:
 		(profile.settings as Dictionary).merge(data.settings, true)
+	if data.get("desk") is Dictionary:
+		(profile.desk as Dictionary).merge(data.desk, true)
 
 
 # --- Choice handling -------------------------------------------------------------

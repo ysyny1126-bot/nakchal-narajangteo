@@ -56,9 +56,36 @@ func _found(ids: Array) -> void:
 	game._refresh()
 
 
+## "내 책상": all items (8급, one skill earned), a locked promotion item, the store.
+func _desk_shots() -> void:
+	game.profile.desk = {"points": 1240, "rank": 2, "owned": {"coffee": 2}, "earned": ["law_book"]}
+	game._show_desk()
+	await _wait(30)
+	await _shot("ui_desk")
+	var desk: Control = game._desk
+	desk.category = "supply"
+	desk._select("dual_monitor")
+	desk._refresh()
+	await _wait(30)
+	await _shot("ui_desk_locked")
+	desk.category = "store"
+	desk._select("plant")
+	desk._on_main()
+	desk._select("coffee")
+	desk._refresh()
+	await _wait(30)
+	await _shot("ui_desk_store")
+	desk.closed.emit()
+	await _wait(5)
+
+
 func _run() -> void:
 	await _wait(40)
 	await _shot("00_title")
+	if OS.get_cmdline_user_args().has("--desk"):
+		await _desk_shots()
+		get_tree().quit()
+		return
 	# Chapter scenario cutscene frames.
 	game.skip_scenarios = false
 	game._play_scenario(1)
@@ -234,6 +261,7 @@ func _run() -> void:
 	game._show_settings()
 	await _shot("ui_settings")
 	game._close_modal()
+	await _desk_shots()
 	game.profile.settings.touch = "on"
 	game._begin_play("warehouse")
 	_place(Vector3(0.4, 0, 1.0), Vector3(0.3, 0, -1))

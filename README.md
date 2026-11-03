@@ -62,6 +62,26 @@ ffmpeg -i build/video/ep01.avi -c:v libx264 -crf 20 -pix_fmt yuv420p -c:a aac vi
 rm override.cfg
 ```
 
+### 내 책상 (조달청 사원 키우기 미리보기)
+
+시작 화면 오른쪽 위 **내 책상** 아이콘(또는 `5` 키)으로 엽니다. 업무 도구는 사지 않고 회사가 주거나 일하면서 얻습니다. 돈을 쓰는 곳은 구내매점(간식·소품)뿐입니다.
+
+| 얻는 방법 | 아이템 |
+|---|---|
+| 기본 지급 (발령 첫날) | 계산기, 업무 수첩, 결재 도장, 탁상시계 |
+| 승진 지급 | 듀얼 모니터(7급), 금장 명패(6급) |
+| 표창 | 청장 표창 트로피(에피소드 S등급) |
+| 교육·노하우 (스킬) | 법령집(법령 교육 이수), 형광펜(오답 노트 3장), 돋보기(감사 주간 실수 0건) |
+| 구내매점 (복지포인트) | 아메리카노, 컵라면, 비타민, 귤 바구니, 초록 화분, 스탠드 조명 |
+
+- 효과는 카드 진행이 만들어지면 연결됩니다. 지금은 체험용 복지포인트 1,000P로 시작합니다.
+- **아이템 데이터**: `scripts/core/desk_items.gd` · **화면**: `scripts/ui/desk_screen.gd`
+- **아이콘(Unity → Godot)**: `unity_cinematic/Assets/Editor/ItemIconRenderer.cs`가 둥근 상자·회전체 메시로 아이템을 만들어 투명 PNG(320×320)로 `assets/items/`에 저장합니다. 외부 에셋 없이 코드로만 만듭니다.
+
+```bash
+/Applications/Unity/Hub/Editor/6000.6.7f1/Unity.app/Contents/MacOS/Unity -batchmode -projectPath unity_cinematic -executeMethod ItemIconRenderer.Render -quit
+```
+
 ### Unity 오프닝 시네마틱
 
 `videos/opening_cinematic_unity.mp4`(21초, 1920×1080, 배경음 포함)는 게임의 네 공간과 나라미·달이를 Unity로 옮겨 원근 카메라로 연출한 오프닝 영상입니다. 시청 → 업체 → 조달청 → 쇼핑몰을 차례로 비추고, 두 캐릭터와 타이틀로 끝납니다.

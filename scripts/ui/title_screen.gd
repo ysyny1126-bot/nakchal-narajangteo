@@ -10,6 +10,7 @@ signal continue_pressed
 signal settings_pressed
 signal collection_pressed
 signal terms_pressed
+signal desk_pressed
 
 const LOGO_H := preload("res://assets/brand/pps_lockup_h.png")
 const LOGO_V := preload("res://assets/brand/pps_lockup_v.png")
@@ -63,8 +64,9 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	# Icon menu (top right)
 	var menu := HBoxContainer.new()
 	menu.add_theme_constant_override("separation", 12)
-	menu.position = Vector2(1280 - 22 - 3 * 64 - 2 * 12, 12)
+	menu.position = Vector2(1280 - 22 - 4 * 64 - 3 * 12, 12)
 	add_child(menu)
+	menu.add_child(_icon_button("desk", "내 책상", func() -> void: desk_pressed.emit()))
 	menu.add_child(_icon_button("trophy", "도감", func() -> void: collection_pressed.emit()))
 	menu.add_child(_icon_button("book", "용어", func() -> void: terms_pressed.emit()))
 	menu.add_child(_icon_button("gear", "설정", func() -> void: settings_pressed.emit()))
@@ -114,7 +116,7 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	row.reset_size()
 	var row_w := row.get_combined_minimum_size().x
 	row.position = Vector2(640 - row_w * 0.5, 548)
-	_hint = _outlined("Enter 이어하기 · 1 새 게임 · 3 설정 · 4 도감" if has_save else "Enter 또는 버튼을 눌러 시작", 14, Color("#ffffff"), Color("#1c3540"), 5)
+	_hint = _outlined("Enter 이어하기 · 1 새 게임 · 3 설정 · 4 도감 · 5 내 책상" if has_save else "Enter 또는 버튼을 눌러 시작", 14, Color("#ffffff"), Color("#1c3540"), 5)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	# Bottom bar: chapters (left) and records/version (right)
 	var chapters := HBoxContainer.new()
@@ -219,6 +221,13 @@ func _draw_icon(icon: Control, kind: String) -> void:
 	var ink := Color("#1f3d4a")
 	var accent := Color("#f08a2c")
 	match kind:
+		"desk":
+			icon.draw_rect(Rect2(c + Vector2(-9, -15), Vector2(14, 10)), ink)
+			icon.draw_rect(Rect2(c + Vector2(-7, -13), Vector2(10, 6)), Color("#8fd3f0"))
+			icon.draw_rect(Rect2(c + Vector2(-16, -4), Vector2(32, 6)), accent)
+			icon.draw_rect(Rect2(c + Vector2(-14, 2), Vector2(4, 13)), accent.darkened(0.2))
+			icon.draw_rect(Rect2(c + Vector2(3, 2), Vector2(11, 13)), accent.darkened(0.2))
+			icon.draw_rect(Rect2(c + Vector2(5, 7), Vector2(7, 2)), Color("#fff3d6"))
 		"gear":
 			for i in range(8):
 				icon.draw_set_transform(c, i * TAU / 8.0, Vector2.ONE)
