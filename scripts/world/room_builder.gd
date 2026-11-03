@@ -589,8 +589,33 @@ static func _pps_office(root: Node3D) -> Dictionary:
 	Props.add_collider(root, Vector3(3.72, 0, -0.6), Vector3(0.5, 1.0, 2.4))
 	Props.model(root, "sideTableDrawers", Vector3(-3.7, 0, 0.6), PI * 0.5)
 	_deco(root, "kitchenCoffeeMachine", Vector3(-3.7, 0.74, 0.5), PI * 0.5)
-	Props.model(root, "pottedPlant", Vector3(-3.6, 0, 2.3))
-	_deco(root, "trashcan", Vector3(2.9, 0, 0.2))
+	Props.model(root, "pottedPlant", Vector3(-3.55, 0, -2.45))
+	_deco(root, "trashcan", Vector3(2.05, 0, -0.55))
+	# Civil-complaint counter (front left): phone, sign and a visitor's side.
+	var counter := Vector3(-2.6, 0, 1.95)
+	Props.rounded_box(root, counter + Vector3(0, 0.48, 0), Vector3(0.6, 0.96, 1.1), Props.mat(Color("#e9e1d0"), 0.8), true)
+	Props.box(root, counter + Vector3(0, 0.98, 0), Vector3(0.72, 0.05, 1.2), Props.mat(Color("#3f5566"), 0.6))
+	Props.box(root, counter + Vector3(0.05, 1.04, -0.25), Vector3(0.22, 0.06, 0.16), Props.mat(Color("#2b2f33"), 0.5))
+	Props.box(root, counter + Vector3(0.05, 1.09, -0.25), Vector3(0.24, 0.04, 0.06), Props.mat(Color("#2b2f33"), 0.5))
+	Props.document(root, counter + Vector3(0.05, 1.01, 0.2), Vector2(0.24, 0.3), Color("#e07a35"), "", 0.1, 2)
+	var csign := Props.label(root, "민원 창구", counter + Vector3(0.37, 0.62, 0), 30, Color("#3f5566"))
+	csign.rotation.y = PI * 0.5
+	# Reception table (front right) where visiting companies sit.
+	var visit := Vector3(2.8, 0, 1.25)
+	Props.cylinder(root, visit + Vector3(0, 0.56, 0), 0.42, 0.05, Props.mat(Color("#c9a77c"), 0.6))
+	Props.cylinder(root, visit + Vector3(0, 0.28, 0), 0.05, 0.54, Props.mat(Color("#4a4540"), 0.5))
+	Props.cylinder(root, visit + Vector3(0, 0.02, 0), 0.24, 0.04, Props.mat(Color("#4a4540"), 0.5))
+	Props.add_collider(root, visit, Vector3(0.8, 1.0, 0.8))
+	Props.box(root, visit + Vector3(-0.08, 0.6, 0.05), Vector3(0.1, 0.03, 0.1), Props.mat(Color("#f4efe4"), 0.6))
+	Props.chair(root, visit + Vector3(0.75, 0, 0), Color("#7a5a3c"), -PI * 0.5)
+	# Door on the right wall: field work and going home.
+	var door := Vector3(3.93, 0, 2.3)
+	Props.box(root, door + Vector3(0, 0.8, 0), Vector3(0.05, 1.6, 0.9), Props.mat(Color("#8a6a4c"), 0.7))
+	Props.box(root, door + Vector3(-0.03, 0.8, 0), Vector3(0.03, 1.5, 0.8), Props.mat(Color("#a7825c"), 0.7))
+	Props.sphere(root, door + Vector3(-0.07, 0.78, -0.3), 0.035, Props.mat(Color("#d8b25a"), 0.3, 0.6))
+	Props.box(root, door + Vector3(-0.04, 1.68, 0), Vector3(0.03, 0.14, 0.42), Props.glow_mat(Color("#3fa36b"), 0.8))
+	var exit_label := Props.label(root, "출입구", door + Vector3(-0.06, 1.68, 0), 26, Color.WHITE)
+	exit_label.rotation.y = -PI * 0.5
 	_rug(root, Vector3(-0.2, 0, 0.75), Vector2(3.2, 2.0), Color("#3f5566"), Color("#c9a24c"))
 	# The player's desk faces the camera so what they have earned is on show.
 	var desk_pos := Vector3(-0.2, 0, 1.05)
@@ -622,6 +647,16 @@ static func _pps_office(root: Node3D) -> Dictionary:
 		"spawn": desk_pos + Vector3(-0.15, 0, -0.62),
 		"npcs": {"lead": lead, "peer": peer},
 		"hotspots": [],
+		# Work spots for the career mode: where to stand, where the pin floats,
+		# and where a visitor waits (position, facing).
+		"spots": {
+			"desk": {"name": "내 자리", "stand": desk_pos + Vector3(1.25, 0, 0.05), "anchor": desk_pos + Vector3(-0.2, 1.45, -0.1)},
+			"counter": {"name": "민원 창구", "stand": counter + Vector3(0.75, 0, 0), "anchor": counter + Vector3(0, 1.55, 0), "visitor": [counter + Vector3(-0.65, 0, 0), PI * 0.5]},
+			"visit": {"name": "응접 테이블", "stand": visit + Vector3(-0.75, 0, 0), "anchor": visit + Vector3(0, 1.4, 0), "visitor": [visit + Vector3(0.75, 0, 0), -PI * 0.5]},
+			"door": {"name": "출입구", "stand": door + Vector3(-0.6, 0, 0), "anchor": door + Vector3(-0.2, 1.95, 0)},
+			"peer": {"name": "최 주무관 자리", "stand": Vector3(-2.55, 0, -0.5), "anchor": Vector3(-2.55, 1.3, -0.95)},
+			"lead": {"name": "팀장 자리", "stand": Vector3(0.6, 0, -1.05), "anchor": Vector3(0.6, 1.35, -1.55)},
+		},
 	}
 
 

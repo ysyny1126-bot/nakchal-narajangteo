@@ -1,7 +1,8 @@
 extends Control
 
-## Game-app style start screen drawn over the 3D title stage: publisher splash,
-## a bouncing game logo, round icon menu, and a big pulsing start button.
+## Game-app style start screen: the spring PPS campus art as the background
+## (Narami and Dali on the right), with the publisher splash, a bouncing game
+## logo, round icon menu and a big pulsing start button in the open space on the left.
 
 const UI = preload("res://scripts/ui/ui_theme.gd")
 
@@ -15,6 +16,9 @@ signal legacy_pressed
 
 const LOGO_H := preload("res://assets/brand/pps_lockup_h.png")
 const LOGO_V := preload("res://assets/brand/pps_lockup_v.png")
+const BACKGROUND := preload("res://assets/brand/title_bg.webp")
+## Centre of the left column where the logo and buttons sit.
+const COL_X := 330.0
 const VERSION := "v2.0"
 
 var _logo: Control
@@ -33,15 +37,31 @@ func _ready() -> void:
 
 ## has_save: show "continue"; save_text: where the save stands; record: collection counts.
 func build(has_save: bool, save_text: String, record: String) -> void:
-	# Soft vignette so white text reads over the sky.
-	var top_shade := ColorRect.new()
-	top_shade.color = Color(0.05, 0.16, 0.22, 0.28)
-	top_shade.anchor_right = 1.0
-	top_shade.offset_bottom = 0
-	top_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(top_shade)
+	var bg := TextureRect.new()
+	bg.texture = BACKGROUND
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(bg)
+	# Deepen the green on the left so the logo and buttons read clearly.
+	var grad := Gradient.new()
+	grad.set_color(0, Color(0.03, 0.2, 0.15, 0.5))
+	grad.set_color(1, Color(0.03, 0.2, 0.15, 0.0))
+	grad.set_offset(1, 0.62)
+	var shade_tex := GradientTexture2D.new()
+	shade_tex.gradient = grad
+	shade_tex.fill_from = Vector2(0, 0.5)
+	shade_tex.fill_to = Vector2(1, 0.5)
+	var left_shade := TextureRect.new()
+	left_shade.texture = shade_tex
+	left_shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	left_shade.stretch_mode = TextureRect.STRETCH_SCALE
+	left_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	left_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(left_shade)
 	var bottom_shade := ColorRect.new()
-	bottom_shade.color = Color(0.03, 0.12, 0.17, 0.45)
+	bottom_shade.color = Color(0.03, 0.16, 0.13, 0.55)
 	bottom_shade.anchor_top = 1.0
 	bottom_shade.anchor_bottom = 1.0
 	bottom_shade.anchor_right = 1.0
@@ -73,14 +93,14 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	menu.add_child(_icon_button("gear", "설정", func() -> void: settings_pressed.emit()))
 	# Game logo (top centre)
 	_logo = Control.new()
-	_logo.position = Vector2(640, 172)
+	_logo.position = Vector2(COL_X, 250)
 	_logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_logo)
-	var kicker := _outlined("공공조달 업무 성장 시뮬레이션", 18, Color("#fff3d6"), Color("#1f3d4a"), 6)
-	_center(kicker, Vector2(0, -124))
+	var kicker := _outlined("공공조달 업무 성장 시뮬레이션", 19, Color("#ffffff"), Color("#1d4a3a"), 7)
+	_center(kicker, Vector2(0, -132))
 	_logo.add_child(kicker)
-	var big := _outlined("낙찰!", 112, Color("#ffb03a"), Color("#1c3540"), 22)
-	big.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.35))
+	var big := _outlined("낙찰!", 124, Color("#ffb03a"), Color("#1f3d2e"), 20)
+	big.add_theme_color_override("font_shadow_color", Color(0.06, 0.2, 0.16, 0.55))
 	big.add_theme_constant_override("shadow_offset_x", 0)
 	big.add_theme_constant_override("shadow_offset_y", 9)
 	_center(big, Vector2(0, -52))
@@ -94,7 +114,7 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	ribbon_style.shadow_size = 8
 	ribbon_style.shadow_offset = Vector2(0, 5)
 	ribbon.add_theme_stylebox_override("panel", ribbon_style)
-	var sub := _outlined("조달청 사원 키우기", 40, Color("#ffffff"), Color("#1f3d4a"), 4)
+	var sub := _outlined("조달청 사원 키우기", 38, Color("#ffffff"), Color("#1f3d4a"), 4)
 	ribbon.add_child(sub)
 	ribbon.reset_size()
 	ribbon.position = Vector2(-ribbon.get_combined_minimum_size().x * 0.5, 34)
@@ -116,7 +136,9 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	row.add_child(_start)
 	row.reset_size()
 	var row_w := row.get_combined_minimum_size().x
-	row.position = Vector2(640 - row_w * 0.5, 548)
+	if row_w > 600.0:
+		row.add_theme_constant_override("separation", 12)
+	row.position = Vector2(COL_X - row_w * 0.5, 448)
 	_hint = _outlined("Enter 이어하기 · 1 새 게임 · 3 설정 · 4 도감 · 5 내 책상" if has_save else "Enter 또는 버튼을 눌러 시작", 14, Color("#ffffff"), Color("#1c3540"), 5)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	# Bottom bar: chapters (left) and records/version (right)
@@ -148,7 +170,7 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	info.add_child(ver)
 	var hint_holder := Control.new()
-	hint_holder.position = Vector2(640, 720 - 66)
+	hint_holder.position = Vector2(COL_X, 548)
 	hint_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(hint_holder)
 	_hint.reset_size()

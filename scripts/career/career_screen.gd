@@ -1,7 +1,9 @@
 extends Control
 
-## 조달청 사원 키우기: the card-based workday over the 3D PPS office.
-## Left: Dali's bubble, the day's work cards, action points and end-of-day.
+## 조달청 사원 키우기: the card-based workday in the walkable 3D PPS office.
+## Each work card waits at a spot (내 자리, 민원 창구, 응접 테이블 …); the
+## employee walks there and presses E to open it as a paper card.
+## Left: Dali's bubble, today's task list, action points and end-of-day.
 ## Right: employee ID (name, rank, salary, stats, skills) and quests.
 ## Dialogs reuse the game's modal (term links, 1–4 keys). The flow:
 ##   briefing → 3 days of cards → boss case → audit week → quiz → promotion
@@ -13,6 +15,8 @@ const Career = preload("res://scripts/core/career_data.gd")
 const Desk = preload("res://scripts/core/desk_items.gd")
 const Glossary = preload("res://scripts/core/glossary.gd")
 const DaliIcon = preload("res://scripts/ui/dali_icon.gd")
+const Marker = preload("res://scripts/world/interact_marker.gd")
+const Npc = preload("res://scripts/actors/npc_actor.gd")
 
 const NAVY := Color("#1f3d4a")
 const MINT := Color("#4fb79e")
@@ -20,6 +24,11 @@ const MINT_DARK := Color("#2f8a78")
 const CREAM := Color("#fdf8ea")
 const PANEL_X := 966.0
 const KIND_NAME := {"careful": "꼼꼼히", "quick": "빠르게", "easy": "편하게"}
+const KIND_COLOR := {"careful": Color("#3f8f6a"), "quick": Color("#3f78a8"), "easy": Color("#c2493d"), "bonus": Color("#8a63c4")}
+## Which office spot holds a card of each type.
+const SPOT_OF := {"work": "desk", "civil": "counter", "lure": "visit", "field": "door", "bonus": "peer"}
+const VISITORS := {"counter": ["민원인", Color("#6b8f5a")], "visit": ["업체 직원", Color("#5d5f66")]}
+const NEAR := 0.85
 
 ## Main scene (sound, modal, mascots, 3D stage, save).
 var game: Node
@@ -51,6 +60,18 @@ var _skills: HFlowContainer
 var _quests: VBoxContainer
 var _overlay: Control
 var _photo: Control
+var _markers := {}
+var _visitors := {}
+var _stage: Node3D
+var _near := ""
+var _paper: Control
+var _paper_card: PanelContainer
+var _paper_tiles: Array = []
+var _paper_ok := ""
+var _paper_close_ok := true
+var _peeked := {}
+var _cam_look := Vector3.ZERO
+var _cam_ready := false
 
 
 func setup(main: Node, career: Dictionary) -> void:
@@ -131,47 +152,53 @@ func _build_left() -> void:
 	_bubble.custom_minimum_size = Vector2(490, 0)
 	bubble.add_child(_bubble)
 	talk.add_child(bubble)
-	# Card tray
-	var tray := Panel.new()
-	var ts := UI.panel(Color("#14262bd8"), Color("#14262b"), 18, 0, 0)
+	# Today's tasks: where each card waits, action points and end-of-day.
+	var tray := PanelContainer.new()
+	var ts := UI.panel(Color("#14262bdd"), Color("#14262b"), 16, 12, 0)
+	ts.content_margin_top = 8
+	ts.content_margin_bottom = 8
 	tray.add_theme_stylebox_override("panel", ts)
-	tray.position = Vector2(12, 540)
-	tray.size = Vector2(942, 168)
+	tray.position = Vector2(12, 628)
+	tray.size = Vector2(942, 80)
+	tray.custom_minimum_size = Vector2(942, 80)
 	tray.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(tray)
-	var tag := UI.label("오늘의 업무 카드", 12, Color("#a9c4c0"), true)
-	tag.position = Vector2(18, 8)
-	tray.add_child(tag)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	tray.add_child(row)
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 4)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(left)
+	left.add_child(UI.label("오늘 할 일  ·  표시된 곳으로 걸어가서 E", 11, Color("#a9c4c0"), true))
 	_hand = HBoxContainer.new()
-	_hand.position = Vector2(14, 30)
-	_hand.size = Vector2(730, 128)
-	_hand.add_theme_constant_override("separation", 10)
-	tray.add_child(_hand)
-	var side := VBoxContainer.new()
-	side.position = Vector2(756, 10)
-	side.size = Vector2(172, 148)
-	side.add_theme_constant_override("separation", 6)
-	tray.add_child(side)
-	side.add_child(UI.label("행동력", 12, Color("#a9c4c0"), true))
+	_hand.add_theme_constant_override("separation", 8)
+	_hand.custom_minimum_size = Vector2(0, 44)
+	left.add_child(_hand)
+	var ap := VBoxContainer.new()
+	ap.add_theme_constant_override("separation", 4)
+	row.add_child(ap)
+	ap.add_child(UI.label("행동력", 11, Color("#a9c4c0"), true))
 	_ap_pips = Control.new()
-	_ap_pips.custom_minimum_size = Vector2(172, 26)
+	_ap_pips.custom_minimum_size = Vector2(162, 26)
 	_ap_pips.draw.connect(_draw_ap)
-	side.add_child(_ap_pips)
+	ap.add_child(_ap_pips)
 	_ot_btn = Button.new()
-	_ot_btn.text = "야근하기 (+2)"
+	_ot_btn.text = "야근 +2"
 	_ot_btn.focus_mode = Control.FOCUS_NONE
-	_ot_btn.custom_minimum_size = Vector2(172, 34)
+	_ot_btn.custom_minimum_size = Vector2(84, 44)
+	_ot_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	UI.style_button(_ot_btn, false)
 	_ot_btn.pressed.connect(_overtime)
-	side.add_child(_ot_btn)
+	row.add_child(_ot_btn)
 	_end_btn = Button.new()
 	_end_btn.text = "퇴근하기"
 	_end_btn.focus_mode = Control.FOCUS_NONE
-	_end_btn.custom_minimum_size = Vector2(172, 40)
+	_end_btn.custom_minimum_size = Vector2(110, 44)
+	_end_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	UI.style_button(_end_btn, true, MINT_DARK)
 	_end_btn.pressed.connect(_end_day)
-	side.add_child(_end_btn)
-
+	row.add_child(_end_btn)
 
 func _build_panel() -> void:
 	var col := VBoxContainer.new()
@@ -331,86 +358,66 @@ func refresh() -> void:
 			_skills.add_child(icon)
 	_refresh_hand()
 	_refresh_quests()
+	_sync_spots()
 
 
 func _refresh_hand() -> void:
 	for child in _hand.get_children():
 		child.queue_free()
 	var hand: Array = state.hand
-	var w := minf(176.0, (730.0 - 10.0 * maxf(hand.size() - 1, 0)) / maxf(hand.size(), 1))
-	for i in hand.size():
-		_hand.add_child(_card_widget(str(hand[i]), i, w))
-	if hand.is_empty() and state.phase == "day":
-		var done := UI.label("오늘 카드를 모두 처리했어요!  [퇴근하기]를 눌러 하루를 마무리해요.", 15, Color("#d7efe7"), true)
-		done.custom_minimum_size = Vector2(720, 120)
-		done.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		_hand.add_child(done)
+	if state.phase == "boss_wait":
+		_hand.add_child(_task_chip("", "핵심 사건", "팀장 자리", Career.TYPES.boss.color, "lead"))
+	elif hand.is_empty() and state.phase == "day":
+		_hand.add_child(_task_chip("", "오늘 업무 끝!", "출입구에서 퇴근", MINT, "door"))
+	else:
+		var spots: Dictionary = game.layout.get("spots", {})
+		for id in hand:
+			var c: Dictionary = Career.card(str(id))
+			var spot: String = SPOT_OF.get(c.type, "desk")
+			var where: String = spots[spot].name if spots.has(spot) else ""
+			if (state.carry as Dictionary).has(id):
+				where = "어제 밀림 · " + where
+			_hand.add_child(_task_chip(str(id), c.title, where, Career.TYPES[c.type].color, spot))
 	var ap := int(state.ap)
 	_ot_btn.visible = state.phase == "day" and ap == 0 and not hand.is_empty() and not bool(state.overtime)
 	_end_btn.visible = state.phase == "day"
 	_end_btn.text = "퇴근하기" if int(state.day) < 3 else "핵심 사건으로"
 
 
-func _card_widget(id: String, index: int, width: float) -> Control:
-	var c: Dictionary = Career.card(id)
-	var t: Dictionary = Career.TYPES[c.type]
-	var carried := (state.carry as Dictionary).has(id)
+## One entry of the task list; clicking it points at the spot in the office.
+func _task_chip(id: String, title: String, where: String, color: Color, spot: String) -> Control:
+	var n := maxi((state.hand as Array).size(), 1)
+	var w := clampf((600.0 - 8.0 * (n - 1)) / n, 120.0, 190.0)
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(width, 124)
+	b.custom_minimum_size = Vector2(w, 44)
 	b.focus_mode = Control.FOCUS_NONE
 	b.clip_contents = true
+	b.tooltip_text = "%s · %s" % [title, where]
 	for m in ["normal", "hover", "pressed", "focus"]:
-		var s := UI.panel(Color("#fffdf8") if m != "hover" else Color("#fff6e3"), t.color, 12, 0, 0)
-		s.border_width_top = 7
-		s.border_width_bottom = 3 if m != "pressed" else 1
-		s.border_color = t.color
-		b.add_theme_stylebox_override(m, s)
-	b.pressed.connect(_open_card.bind(id))
-	b.mouse_entered.connect(func() -> void: b.position.y -= 6)
-	b.mouse_exited.connect(func() -> void: b.position.y = 0)
+		var st := UI.panel(Color("#fffdf8") if m != "hover" else Color("#fff6e3"), color, 8, 0, 0)
+		st.border_width_left = 6
+		b.add_theme_stylebox_override(m, st)
+	b.pressed.connect(_point_to.bind(spot))
 	var v := VBoxContainer.new()
-	v.position = Vector2(10, 12)
-	v.size = Vector2(width - 20, 108)
-	v.add_theme_constant_override("separation", 3)
+	v.position = Vector2(12, 4)
+	v.size = Vector2(w - 16, 38)
+	v.add_theme_constant_override("separation", 0)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_child(v)
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 4)
-	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var chip := UI.chip(t.name, t.color, Color.WHITE, 10)
-	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_child(chip)
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_child(gap)
-	var key := UI.label(str(index + 1), 11, UI.MUTED, true)
-	head.add_child(key)
-	v.add_child(head)
-	var title := UI.wrap(UI.label(c.title, 14, UI.INK, true))
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title.custom_minimum_size = Vector2(width - 20, 0)
-	v.add_child(title)
-	var org := UI.label(c.org, 10, UI.MUTED)
-	org.clip_text = true
-	org.custom_minimum_size = Vector2(width - 20, 0)
-	org.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	v.add_child(org)
-	var foot := HBoxContainer.new()
-	foot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if c.type == "bonus":
-		foot.add_child(UI.label("행동력 0 · 선물", 10, Color("#8a63c4"), true))
-	else:
-		var risk := int(c.risk)
-		foot.add_child(UI.label("위험 " + "●".repeat(risk) + "○".repeat(3 - risk), 10, UI.RED if risk >= 2 else UI.INK_SOFT, true))
-	if carried:
-		var late := UI.chip("어제 밀림", UI.RED, Color.WHITE, 9)
-		late.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		foot.add_child(late)
-	v.add_child(foot)
-	for l in [key, title, org]:
-		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for child in foot.get_children():
+	var t := UI.label(title, 13, UI.INK, true)
+	t.clip_text = true
+	t.custom_minimum_size = Vector2(w - 18, 0)
+	v.add_child(t)
+	var risk := ""
+	if id != "":
+		var c: Dictionary = Career.card(id)
+		if c.type != "bonus":
+			risk = "  " + "●".repeat(int(c.risk)) + "○".repeat(3 - int(c.risk))
+	var l := UI.label(where + risk, 10, UI.MUTED, true)
+	l.clip_text = true
+	l.custom_minimum_size = Vector2(w - 18, 0)
+	v.add_child(l)
+	for child in v.get_children():
 		child.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return b
 
@@ -498,11 +505,11 @@ func say(text: String) -> void:
 func _draw_ap() -> void:
 	var total := int(state.ap_max)
 	for i in total:
-		var c := Vector2(12 + i * 26, 13)
+		var c := Vector2(10 + i * 20, 13)
 		var on := i < int(state.ap)
-		_ap_pips.draw_circle(c, 10, Color("#2c4a52"))
+		_ap_pips.draw_circle(c, 9, Color("#2c4a52"))
 		if on:
-			_ap_pips.draw_circle(c, 8, Color("#ffcf5a"))
+			_ap_pips.draw_circle(c, 7, Color("#ffcf5a"))
 			_ap_pips.draw_circle(c + Vector2(-2, -2), 3, Color("#fff3c4"))
 
 
@@ -547,14 +554,552 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if game.modal.is_open() or is_instance_valid(_overlay) or is_instance_valid(game._desk):
 		return
 	var key: int = event.physical_keycode
-	if key >= KEY_1 and key <= KEY_6 and state.phase == "day":
-		var i := key - KEY_1
-		if i < (state.hand as Array).size():
-			get_viewport().set_input_as_handled()
-			_open_card(str(state.hand[i]))
+	if is_instance_valid(_paper):
+		get_viewport().set_input_as_handled()
+		if key >= KEY_1 and key <= KEY_9:
+			var i := key - KEY_1
+			if i < _paper_tiles.size() and not (_paper_tiles[i][0] as Button).disabled:
+				_paper_choice(str(_paper_tiles[i][1]))
+		elif key in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_E] and _paper_ok != "":
+			_paper_choice(_paper_ok)
+		elif key == KEY_ESCAPE and _paper_close_ok:
+			_paper_choice("close")
+		return
+	if key == KEY_E or key == KEY_SPACE:
+		get_viewport().set_input_as_handled()
+		interact()
 	elif key in [KEY_ENTER, KEY_KP_ENTER] and state.phase == "day" and (state.hand as Array).is_empty():
 		get_viewport().set_input_as_handled()
 		_end_day()
+
+
+# --- Walking the office -------------------------------------------------------------
+
+## Main lets the employee walk only while nothing is open on top of the office.
+func can_walk() -> bool:
+	return visible and str(state.phase) in ["day", "boss_wait"] and not game.modal.is_open() \
+		and not is_instance_valid(_overlay) and not is_instance_valid(_paper) and not is_instance_valid(game._desk)
+
+
+func _process(delta: float) -> void:
+	if not is_instance_valid(game) or not is_instance_valid(game.player):
+		return
+	if not is_instance_valid(_overlay):
+		_follow_camera(delta)
+	var best := ""
+	if can_walk():
+		var best_d := NEAR
+		var p: Vector3 = game.player.global_position
+		for id in _markers:
+			var m: Node3D = _markers[id]
+			if not m.visible:
+				continue
+			var d := Vector2(p.x - m.stand.x, p.z - m.stand.z).length()
+			if d < best_d:
+				best_d = d
+				best = id
+	if best != _near:
+		if _markers.has(_near) and is_instance_valid(_markers[_near]):
+			_markers[_near].set_near(false)
+		_near = best
+		if best != "":
+			_markers[best].set_near(true)
+			game.sound.play("move")
+
+
+## A gentle follow camera that keeps the whole office readable left of the ID panel.
+func _follow_camera(delta: float) -> void:
+	var cam: Camera3D = game.cine_cam
+	var p: Vector3 = game.player.global_position
+	var look := Vector3(clampf(p.x * 0.3, -0.9, 1.0), 0.2, clampf(p.z * 0.25, -0.5, 0.5))
+	if not _cam_ready:
+		_cam_look = look
+		_cam_ready = true
+	else:
+		_cam_look = _cam_look.lerp(look, 1.0 - exp(-3.5 * delta))
+	cam.fov = 46.0
+	cam.h_offset = 1.25
+	cam.v_offset = -0.15
+	cam.global_position = _cam_look + Vector3(0, 6.3, 6.4)
+	cam.look_at(_cam_look)
+	cam.current = true
+
+
+## Cards in hand grouped by the spot where they wait.
+func _spot_cards() -> Dictionary:
+	var out := {}
+	if state.phase != "day":
+		return out
+	for id in state.hand:
+		var spot: String = SPOT_OF.get(Career.card(str(id)).type, "desk")
+		if not out.has(spot):
+			out[spot] = []
+		(out[spot] as Array).append(str(id))
+	return out
+
+
+## Builds the spot pins (again after the office is rebuilt) and labels them.
+func _sync_spots() -> void:
+	var spots: Dictionary = game.layout.get("spots", {})
+	if _stage != game.world_root:
+		_stage = game.world_root
+		_markers.clear()
+		_visitors.clear()
+		_near = ""
+		_cam_ready = false
+		for id in spots:
+			var m := Marker.new()
+			_stage.add_child(m)
+			m.setup({"id": id, "label": spots[id].name, "stand": spots[id].stand, "anchor": spots[id].anchor})
+			_markers[id] = m
+	var groups := _spot_cards()
+	for id in _markers:
+		var m: Node3D = _markers[id]
+		var title := ""
+		if groups.has(id):
+			var ids: Array = groups[id]
+			title = Career.card(ids[0]).title if ids.size() == 1 else "%s · %d건" % [spots[id].name, ids.size()]
+		elif state.phase == "day" and id == "door" and (state.hand as Array).is_empty():
+			title = "퇴근하기"
+		elif state.phase == "boss_wait" and id == "lead":
+			title = "핵심 사건"
+		m.visible = title != ""
+		m.title = title
+		m.set_status("next")
+	for id in VISITORS:
+		var want: bool = groups.has(id) and spots.has(id) and spots[id].has("visitor")
+		var has := _visitors.has(id) and is_instance_valid(_visitors[id])
+		if want and not has:
+			var npc := Npc.new()
+			npc.build(VISITORS[id][0], VISITORS[id][1], Color("#2a2522"), Color("#eac2a0"), Color("#d8b25a"))
+			npc.position = spots[id].visitor[0]
+			npc.rotation.y = spots[id].visitor[1]
+			_stage.add_child(npc)
+			_visitors[id] = npc
+		elif not want and has:
+			_visitors[id].queue_free()
+			_visitors.erase(id)
+
+
+## Opens whatever waits at the spot the employee is standing on.
+func interact() -> void:
+	if not can_walk():
+		return
+	if _near == "":
+		say("주황색 표시가 있는 곳으로 걸어가서 E를 눌러요.")
+		game.sound.play("locked")
+		return
+	var spot := _near
+	var spots: Dictionary = game.layout.spots
+	game.narami.face_point(spots[spot].anchor)
+	game.narami.play_action("inspect")
+	_markers[spot].pulse()
+	if _visitors.has(spot) and is_instance_valid(_visitors[spot]):
+		_visitors[spot].talk()
+	var npcs: Dictionary = game.layout.get("npcs", {})
+	if npcs.has(spot) and is_instance_valid(npcs[spot]):
+		npcs[spot].talk()
+	if state.phase == "boss_wait":
+		_boss(0)
+		return
+	var ids: Array = _spot_cards().get(spot, [])
+	if ids.is_empty():
+		_end_day()
+	elif ids.size() == 1:
+		_open_card(ids[0])
+	else:
+		_pick_paper(spot, ids)
+
+
+func _point_to(spot: String) -> void:
+	game.sound.play("select")
+	if _markers.has(spot):
+		_markers[spot].pulse()
+	var spots: Dictionary = game.layout.get("spots", {})
+	if spots.has(spot):
+		say("%s(으)로 걸어가서 E를 눌러요." % spots[spot].name)
+
+
+## Floating numbers over the employee's head after a choice.
+func _float(text: String, color: Color) -> void:
+	if not is_instance_valid(game.world_root) or text == "":
+		return
+	var l := Label3D.new()
+	l.text = text
+	l.font = UI.Props.font(true)
+	l.font_size = 44
+	l.pixel_size = 0.004
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.render_priority = 5
+	l.outline_size = 14
+	l.outline_modulate = Color("#1d2a2c")
+	l.modulate = color
+	game.world_root.add_child(l)
+	l.global_position = game.player.global_position + Vector3(0, 1.35, 0)
+	var t := l.create_tween().set_parallel(true)
+	t.tween_property(l, "position:y", l.position.y + 0.6, 1.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(l, "modulate:a", 0.0, 0.6).set_delay(1.0)
+	t.chain().tween_callback(l.queue_free)
+
+
+# --- Paper card view -------------------------------------------------------------------
+
+## A work card held up like a sheet of paper: picture, one-line situation,
+## the attached document and three choice tiles. Returns the content box.
+func _paper_open(accent: Color, closable: bool = true) -> VBoxContainer:
+	_paper_close()
+	_paper_tiles.clear()
+	_paper_ok = ""
+	_paper_close_ok = closable
+	_paper = ColorRect.new()
+	(_paper as ColorRect).color = Color(0.06, 0.1, 0.11, 0.38)
+	_paper.position = Vector2(0, 48)
+	_paper.size = Vector2(PANEL_X - 8, 672)
+	_paper.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_paper)
+	_paper_card = PanelContainer.new()
+	var st := UI.shadow_panel(Color("#fffdf6"), accent, 18, 22)
+	st.border_width_top = 10
+	st.border_width_left = 0
+	st.border_width_right = 0
+	st.border_width_bottom = 0
+	st.content_margin_top = 26
+	_paper_card.add_theme_stylebox_override("panel", st)
+	_paper_card.custom_minimum_size = Vector2(660, 0)
+	_paper_card.modulate.a = 0.0
+	_paper.add_child(_paper_card)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	_paper_card.add_child(v)
+	call_deferred("_paper_layout")
+	return v
+
+
+func _paper_layout() -> void:
+	var card := _paper_card
+	await get_tree().process_frame
+	if not is_instance_valid(card) or card != _paper_card:
+		return
+	card.reset_size()
+	var pos := Vector2((PANEL_X - 8) * 0.5 - card.size.x * 0.5, maxf(8.0, 330.0 - card.size.y * 0.5))
+	card.position = pos + Vector2(0, 24)
+	card.rotation = -0.03
+	card.pivot_offset = card.size * 0.5
+	var t := card.create_tween().set_parallel(true)
+	t.tween_property(card, "position", pos, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(card, "rotation", 0.0, 0.22)
+	t.tween_property(card, "modulate:a", 1.0, 0.14)
+
+
+func _paper_close() -> void:
+	if is_instance_valid(_paper):
+		_paper.queue_free()
+	_paper = null
+	_paper_card = null
+	_paper_tiles.clear()
+	_paper_ok = ""
+
+
+func _paper_choice(id: String) -> void:
+	if id == "close":
+		_paper_close()
+		game.sound.play("select")
+		refresh()
+		return
+	if id.begins_with("c_open:"):
+		_open_card(id.trim_prefix("c_open:"))
+		return
+	_on_choice(id, {})
+
+
+## Header: type picture, title and who sent it, plus the risk meter.
+func _paper_head(v: VBoxContainer, type: String, title: String, org: String, risk: int, extra: String = "") -> void:
+	var t: Dictionary = Career.TYPES[type]
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 14)
+	v.add_child(head)
+	var icon := Control.new()
+	icon.custom_minimum_size = Vector2(64, 64)
+	icon.draw.connect(_draw_type_icon.bind(icon, type))
+	head.add_child(icon)
+	var names := VBoxContainer.new()
+	names.add_theme_constant_override("separation", 2)
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(names)
+	var tags := HBoxContainer.new()
+	tags.add_theme_constant_override("separation", 6)
+	tags.add_child(UI.chip(t.name, t.color, Color.WHITE, 11))
+	if extra != "":
+		tags.add_child(UI.chip(extra, Color("#f1e3c8"), Color("#8a5a1c"), 10))
+	names.add_child(tags)
+	names.add_child(UI.wrap(UI.label(title, 22, UI.INK, true)))
+	names.add_child(UI.label(org, 12, UI.MUTED, true))
+	if risk >= 0:
+		var r := VBoxContainer.new()
+		r.add_theme_constant_override("separation", 2)
+		r.add_child(UI.label("실수 위험", 10, UI.MUTED, true))
+		var meter := Control.new()
+		meter.custom_minimum_size = Vector2(66, 18)
+		meter.draw.connect(func() -> void:
+			for i in 3:
+				var on := i < risk
+				meter.draw_rect(Rect2(i * 22, 4, 18, 10), (UI.RED if risk >= 2 else UI.ORANGE) if on else Color("#e6dfd0")))
+		r.add_child(meter)
+		head.add_child(r)
+	if _paper_close_ok:
+		var esc := VBoxContainer.new()
+		esc.add_child(UI.keycap("Esc"))
+		head.add_child(esc)
+
+
+## The situation as a speech bubble (quotes) or a plain note.
+func _paper_text(v: VBoxContainer, text: String) -> void:
+	var quote := text.begins_with("\"")
+	var p := PanelContainer.new()
+	var st := UI.panel(Color("#f3efe4") if not quote else Color("#ffffff"), Color("#e4dccb"), 12, 14, 1 if quote else 0)
+	p.add_theme_stylebox_override("panel", st)
+	var r := RichTextLabel.new()
+	r.bbcode_enabled = true
+	r.fit_content = true
+	r.scroll_active = false
+	r.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	r.meta_underlined = false
+	r.add_theme_font_size_override("normal_font_size", UI.px(15))
+	r.add_theme_font_size_override("bold_font_size", UI.px(15))
+	r.add_theme_font_override("bold_font", UI.Props.font(true))
+	r.add_theme_color_override("default_color", UI.INK)
+	r.text = Glossary.link(text)
+	r.meta_clicked.connect(func(meta: Variant) -> void:
+		if str(meta).begins_with("term:"):
+			game._show_term(str(meta).trim_prefix("term:")))
+	p.add_child(r)
+	v.add_child(p)
+
+
+## One choice: kind, cost in coins, what you do, and what it risks.
+func _paper_tile(kind: String, title: String, cost: int, label: String, foot: String, id: String, disabled: bool, badge: Array = []) -> Button:
+	var accent: Color = KIND_COLOR.get(kind, UI.ORANGE)
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(0, 136)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.focus_mode = Control.FOCUS_NONE
+	b.disabled = disabled
+	b.clip_contents = true
+	for m in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var st := UI.panel(Color("#ffffff") if m != "hover" else accent.lerp(Color.WHITE, 0.9), accent if m == "hover" else Color("#e4dccb"), 12, 0, 2)
+		st.border_width_bottom = 4 if m != "pressed" else 2
+		if m == "disabled":
+			st.bg_color = Color("#f2efe8")
+		b.add_theme_stylebox_override(m, st)
+	b.pressed.connect(_paper_choice.bind(id))
+	b.mouse_entered.connect(func() -> void: game.sound.play("move") if not b.disabled else null)
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]:
+		pad.add_theme_constant_override("margin_" + side, 12 if side != "bottom" else 14)
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(pad)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	pad.add_child(v)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	v.add_child(head)
+	head.add_child(UI.label(title, 17, accent if not disabled else UI.MUTED, true))
+	var coins := Control.new()
+	coins.custom_minimum_size = Vector2(maxi(cost, 1) * 16, 22)
+	coins.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	coins.draw.connect(func() -> void:
+		for i in cost:
+			coins.draw_circle(Vector2(8 + i * 16, 11), 7, Color("#e8b33c"))
+			coins.draw_circle(Vector2(6 + i * 16, 9), 2.5, Color("#fff3c4")))
+	head.add_child(coins)
+	head.add_child(UI.keycap(str(_paper_tiles.size() + 1)))
+	var l := UI.wrap(UI.label(label, 13, UI.INK if not disabled else UI.MUTED, true))
+	l.custom_minimum_size = Vector2(150, 0)
+	l.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(l)
+	var f := HBoxContainer.new()
+	f.add_theme_constant_override("separation", 6)
+	f.add_child(UI.label(foot if not disabled else "행동력 부족", 11, UI.INK_SOFT if not disabled else UI.RED, true))
+	if not badge.is_empty():
+		f.add_child(UI.chip(str(badge[0]), badge[1], Color.WHITE, 10))
+	v.add_child(f)
+	for child in [v, head, coins, l, f]:
+		child.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_paper_tiles.append([b, id])
+	return b
+
+
+func _paper_footer(v: VBoxContainer, extras: Array) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	v.add_child(row)
+	for e in extras:
+		var btn := Button.new()
+		btn.text = e[0]
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.custom_minimum_size = Vector2(0, 34)
+		UI.style_button(btn, false, UI.GOLD)
+		btn.pressed.connect(_paper_choice.bind(e[1]))
+		row.add_child(btn)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(gap)
+	if _paper_close_ok:
+		var later := Button.new()
+		later.text = "나중에 하기"
+		later.focus_mode = Control.FOCUS_NONE
+		later.custom_minimum_size = Vector2(0, 34)
+		UI.style_button(later, false)
+		later.pressed.connect(_paper_choice.bind("close"))
+		row.add_child(later)
+
+
+## The card flips to its result: a stamp, what happened, the lesson and the numbers.
+func _paper_result(kind: String, stamp: String, headline: String, body: String, lesson: String, deltas: Array, next_label: String, next_id: String) -> void:
+	var accent: Color = KIND_COLOR.get(kind, UI.GOLD)
+	var v := _paper_open(accent, false)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 18)
+	v.add_child(top)
+	var seal := PanelContainer.new()
+	var ss := UI.panel(Color(accent, 0.06), accent, 48, 0, 4)
+	seal.add_theme_stylebox_override("panel", ss)
+	seal.custom_minimum_size = Vector2(96, 96)
+	var sl := UI.label(stamp, 17, accent, true)
+	sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	seal.add_child(sl)
+	seal.rotation = -0.18
+	seal.pivot_offset = Vector2(48, 48)
+	seal.scale = Vector2(1.6, 1.6)
+	seal.create_tween().tween_property(seal, "scale", Vector2.ONE, 0.25).set_delay(0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	top.add_child(seal)
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", 6)
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(words)
+	words.add_child(UI.wrap(UI.label(headline, 21, UI.INK, true)))
+	var r: RichTextLabel = game.modal.rich(Glossary.link(body), 15, UI.INK_SOFT)
+	r.custom_minimum_size = Vector2(480, 0)
+	r.mouse_filter = Control.MOUSE_FILTER_PASS
+	r.meta_clicked.connect(func(meta: Variant) -> void:
+		if str(meta).begins_with("term:"):
+			game._show_term(str(meta).trim_prefix("term:")))
+	words.add_child(r)
+	if lesson != "":
+		var band := PanelContainer.new()
+		band.add_theme_stylebox_override("panel", UI.panel(Color("#fff4d2"), Color("#f0dca0"), 10, 12))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		band.add_child(row)
+		row.add_child(UI.chip("오늘의 배움", UI.GOLD, Color.WHITE, 11))
+		var ll := UI.wrap(UI.label(lesson, 15, UI.INK, true))
+		ll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(ll)
+		v.add_child(band)
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 6)
+	v.add_child(foot)
+	for d in deltas:
+		var good := bool(d.get("good", true))
+		foot.add_child(UI.chip("%s %s" % [d.label, d.value], Color("#e3f0e4") if good else Color("#f6e0dc"), UI.GREEN.darkened(0.2) if good else UI.RED.darkened(0.15), 13))
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(gap)
+	var ok := Button.new()
+	ok.text = next_label + "   Enter"
+	ok.focus_mode = Control.FOCUS_NONE
+	ok.custom_minimum_size = Vector2(0, 40)
+	UI.style_button(ok, true, accent)
+	ok.pressed.connect(_paper_choice.bind(next_id))
+	foot.add_child(ok)
+	_paper_ok = next_id
+
+
+## Simple pictures per card type so the card reads before its words do.
+func _draw_type_icon(c: Control, type: String) -> void:
+	var col: Color = Career.TYPES[type].color
+	var o := Vector2(32, 32)
+	c.draw_circle(o, 31, col)
+	c.draw_circle(o, 27, col.lightened(0.12))
+	var w := Color("#fffdf6")
+	var ink := col.darkened(0.35)
+	match type:
+		"work":
+			c.draw_rect(Rect2(o + Vector2(-12, -16), Vector2(24, 32)), w)
+			for i in 4:
+				c.draw_rect(Rect2(o + Vector2(-8, -10 + i * 6), Vector2(16 if i < 3 else 10, 2.5)), ink)
+		"civil":
+			c.draw_rect(Rect2(o + Vector2(-16, -13), Vector2(32, 20)), w)
+			c.draw_colored_polygon(PackedVector2Array([o + Vector2(-8, 7), o + Vector2(2, 7), o + Vector2(-10, 15)]), w)
+			for i in 3:
+				c.draw_circle(o + Vector2(-8 + i * 8, -3), 2.5, ink)
+		"lure":
+			c.draw_rect(Rect2(o + Vector2(-14, -6), Vector2(28, 20)), w)
+			c.draw_rect(Rect2(o + Vector2(-16, -12), Vector2(32, 7)), w)
+			c.draw_rect(Rect2(o + Vector2(-2.5, -12), Vector2(5, 26)), ink)
+			c.draw_circle(o + Vector2(-5, -15), 4, w)
+			c.draw_circle(o + Vector2(5, -15), 4, w)
+		"field":
+			c.draw_rect(Rect2(o + Vector2(-17, -10), Vector2(22, 16)), w)
+			c.draw_rect(Rect2(o + Vector2(5, -4), Vector2(11, 10)), w)
+			c.draw_circle(o + Vector2(-9, 9), 4.5, ink)
+			c.draw_circle(o + Vector2(9, 9), 4.5, ink)
+		"bonus":
+			var pts := PackedVector2Array()
+			for i in 10:
+				var a := -PI * 0.5 + i * PI / 5.0
+				pts.append(o + Vector2(cos(a), sin(a)) * (16.0 if i % 2 == 0 else 7.0))
+			c.draw_colored_polygon(pts, w)
+		_:
+			c.draw_rect(Rect2(o + Vector2(-3.5, -16), Vector2(7, 20)), w)
+			c.draw_circle(o + Vector2(0, 12), 4.5, w)
+
+
+## Several cards wait at one spot: lay them out side by side to pick from.
+func _pick_paper(spot: String, ids: Array) -> void:
+	game.sound.play("open")
+	var v := _paper_open(NAVY)
+	var head := HBoxContainer.new()
+	v.add_child(head)
+	var title := UI.label("%s · 업무 %d건" % [game.layout.spots[spot].name, ids.size()], 20, UI.INK, true)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	head.add_child(UI.keycap("Esc"))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	v.add_child(row)
+	for id in ids:
+		var c: Dictionary = Career.card(id)
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(200, 150)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.focus_mode = Control.FOCUS_NONE
+		var col: Color = Career.TYPES[c.type].color
+		for m in ["normal", "hover", "pressed", "focus"]:
+			var st := UI.panel(Color("#ffffff") if m != "hover" else Color("#fff6e3"), col, 12, 0, 2)
+			st.border_width_top = 8
+			b.add_theme_stylebox_override(m, st)
+		b.pressed.connect(_paper_choice.bind("c_open:" + str(id)))
+		var cv := VBoxContainer.new()
+		cv.position = Vector2(12, 14)
+		cv.size = Vector2(176, 130)
+		cv.add_theme_constant_override("separation", 6)
+		cv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(cv)
+		var icon := Control.new()
+		icon.custom_minimum_size = Vector2(64, 64)
+		icon.draw.connect(_draw_type_icon.bind(icon, str(c.type)))
+		cv.add_child(icon)
+		cv.add_child(UI.wrap(UI.label(c.title, 15, UI.INK, true)))
+		cv.add_child(UI.label("%s  %s" % [_paper_tiles.size() + 1, "●".repeat(int(c.risk)) + "○".repeat(3 - int(c.risk))], 11, UI.MUTED, true))
+		for child in cv.get_children():
+			child.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(b)
+		_paper_tiles.append([b, "c_open:" + str(id)])
 
 
 # --- Episode / day -------------------------------------------------------------------
@@ -566,7 +1111,7 @@ func begin_episode() -> void:
 	refresh()
 	_lead_talk()
 	game.modal.open({"kicker": "%s · %s 발령" % [info.code, info.dept], "accent": NAVY, "title": "%s의 브리핑" % info.lead, "body": str(info.briefing) % str(state.name), "dismissable": false, "width": 600, "buttons": [{"label": "업무 시작하기", "id": "c_start"}]})
-	say("%s 첫날이에요! 카드를 누르면 업무가 열려요. 위험도를 보고 어디에 힘을 쓸지 정해요." % info.code)
+	say("%s 첫날! 주황색 표시로 걸어가 E를 누르면 업무가 열려요." % info.code)
 
 
 func start_day() -> void:
@@ -598,9 +1143,9 @@ func start_day() -> void:
 	state.today_perf = 0
 	game._career_write()
 	refresh()
-	var line := "%d일 차 출근! 오늘 카드는 %d장, 행동력은 %d예요." % [day, hand.size(), int(state.ap)]
+	var line := "%d일 차 출근! 업무 %d건 · 행동력 %d." % [day, hand.size(), int(state.ap)]
 	if tired:
-		line += " 어제 너무 무리해서 행동력이 1 줄었어요."
+		line += " 어제 무리해서 행동력 -1."
 	if not notes.is_empty():
 		line += " " + " · ".join(notes)
 	say(line)
@@ -625,29 +1170,37 @@ func _open_card(id: String) -> void:
 		return
 	_active = id
 	var c: Dictionary = Career.card(id)
-	var t: Dictionary = Career.TYPES[c.type]
 	game.sound.play("open")
-	var custom: VBoxContainer = game.modal.open({"kicker": "%s · %s" % [t.name, c.org], "accent": t.color, "title": c.title, "body": c.text, "width": 640, "assumption": c.has("calc")})
+	var v := _paper_open(Career.TYPES[c.type].color)
+	_paper_head(v, c.type, c.title, c.org, int(c.risk) if c.type != "bonus" else -1, "게임용 가정 수치" if c.has("calc") else "")
+	_paper_text(v, c.text)
 	if c.has("doc"):
-		custom.add_child(_doc_panel(c.doc))
-	if c.type != "bonus":
-		var risk := int(c.risk)
-		var hint: String = ["실수가 숨을 일이 거의 없어요. 빠르게 해도 괜찮아요.", "가끔 실수가 숨어요.", "빠르게 하면 실수가 숨기 쉬워요.", "빠르게 하면 거의 틀림없이 문제가 생겨요."][risk]
-		custom.add_child(UI.label("위험 %s  ·  %s" % ["●".repeat(risk) + "○".repeat(3 - risk), hint], 12, UI.RED if risk >= 2 else UI.INK_SOFT, true))
-	var buttons := []
+		v.add_child(_doc_panel(c.doc))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	v.add_child(row)
 	var ap := int(state.ap)
 	if c.has("bonus"):
-		buttons.append({"label": "%s  (행동력 0)" % c.bonus[0], "id": "c_pick:bonus", "primary": true, "accent": Color("#8a63c4")})
+		row.add_child(_paper_tile("bonus", "받기", 0, c.bonus[0], "행동력 0 · 선물", "c_pick:bonus", false))
+	var risk := int(c.get("risk", 0))
 	for kind in ["careful", "quick", "easy"]:
 		if not c.has(kind):
 			continue
 		var cost := _cost(c, kind)
-		var short := cost > ap
-		buttons.append({"label": "%s · 행동력 %d  —  %s%s" % [KIND_NAME[kind], cost, c[kind][0], "  (행동력 부족)" if short else ""], "id": "c_pick:" + kind, "primary": false, "disabled": short})
-	if c.has("quick") and int(c.risk) > 0 and _has("magnifier") and not (state.used as Dictionary).has("magnifier"):
-		buttons.append({"label": "돋보기로 살펴보기 (하루 1번 · '빠르게'가 안전한지 미리 확인)", "id": "c_peek", "primary": false})
-	buttons.append({"label": "나중에 하기", "id": "close", "primary": false})
-	game.modal.add_buttons(buttons)
+		var foot := ""
+		var badge := []
+		match kind:
+			"careful": foot = "안전 · 실적 +1"
+			"quick":
+				foot = "실적 +2 · " + ("안전" if risk == 0 else "실수 위험")
+				if _peeked.has(id):
+					badge = ["함정!", UI.RED] if _peeked[id] else ["안전", UI.GREEN]
+			"easy": foot = "청렴 -%d" % int(c.get("easy_int", 15))
+		row.add_child(_paper_tile(kind, KIND_NAME[kind], cost, c[kind][0], foot, "c_pick:" + kind, cost > ap, badge))
+	var extras := []
+	if c.has("quick") and risk > 0 and _has("magnifier") and not (state.used as Dictionary).has("magnifier"):
+		extras.append(["돋보기로 살펴보기 (하루 1번)", "c_peek"])
+	_paper_footer(v, extras)
 
 
 ## Attached document; trap lines are highlighted when the employee has the highlighter.
@@ -655,7 +1208,7 @@ func _doc_panel(doc: Dictionary) -> Control:
 	var p := PanelContainer.new()
 	p.add_theme_stylebox_override("panel", UI.panel(Color("#ffffff"), Color("#d9cfbd"), 8, 14))
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 4)
+	v.add_theme_constant_override("separation", 0)
 	p.add_child(v)
 	v.add_child(UI.label("첨부 · " + str(doc.title), 12, UI.NAVY, true))
 	var marker := _has("highlighter")
@@ -663,7 +1216,10 @@ func _doc_panel(doc: Dictionary) -> Control:
 	for i in lines.size():
 		var trap := (doc.trap as Array).has(i) and marker
 		var row := PanelContainer.new()
-		row.add_theme_stylebox_override("panel", UI.panel(Color("#fff1a8") if trap else Color(1, 1, 1, 0), Color(1, 1, 1, 0), 4, 6, 0))
+		var rs := UI.panel(Color("#fff1a8") if trap else Color(1, 1, 1, 0), Color(1, 1, 1, 0), 4, 6, 0)
+		rs.content_margin_top = 2
+		rs.content_margin_bottom = 2
+		row.add_theme_stylebox_override("panel", rs)
 		row.add_child(UI.label("· " + str(lines[i]), 13, UI.INK, trap))
 		v.add_child(row)
 	if marker and not (doc.trap as Array).is_empty():
@@ -672,11 +1228,12 @@ func _doc_panel(doc: Dictionary) -> Control:
 
 
 func _peek() -> void:
-	var c: Dictionary = Career.card(_active)
 	(state.used as Dictionary)["magnifier"] = true
 	var risky := _would_mistake(_active)
-	game.modal.open({"kicker": "돋보기", "accent": UI.GOLD, "title": "빠르게 처리하면…", "body": "[b]실수가 숨어 있어요![/b] 이 카드는 꼼꼼히 하는 게 좋겠어요." if risky else "이번엔 [b]빠르게 해도 괜찮아요.[/b] 숨은 문제가 보이지 않아요.", "buttons": [{"label": "카드로 돌아가기", "id": "c_reopen"}]})
-	say("돋보기는 하루에 한 번! " + ("이건 함정이에요." if risky else "이건 안전해 보여요."))
+	_peeked[_active] = risky
+	game.sound.play("fail" if risky else "success")
+	say("돋보기로 보니 " + ("'빠르게'에 함정이 있어요!" if risky else "'빠르게' 해도 괜찮아요."))
+	_open_card(_active)
 
 
 ## Deterministic per run and card, so peeking and the audit agree.
@@ -703,13 +1260,15 @@ func _pick(kind: String) -> void:
 	var gain := {"perf": 0, "integrity": 0, "stamina": 0}
 	var headline := ""
 	var body := ""
+	var lesson := str(c.get("lesson", ""))
+	var stamp := "원칙 처리"
 	var mood := "cheer"
 	match kind:
 		"careful":
 			gain.perf += 1
 			_merge(gain, c.get("careful_gain", {}))
 			headline = "원칙대로 처리했어요"
-			body = "%s\n\n[b]오늘의 배움[/b] · %s" % [c.careful[1], c.lesson]
+			body = c.careful[1]
 		"quick":
 			gain.perf += 2
 			var mistake := _would_mistake(id)
@@ -720,13 +1279,15 @@ func _pick(kind: String) -> void:
 				saved = true
 			(state.quick_log as Array).append({"id": id, "mistake": mistake})
 			headline = "빠르게 처리했어요"
+			stamp = "빠른 처리"
 			mood = "point"
 			if int(c.risk) == 0:
-				body = "%s\n\n[b]오늘의 배움[/b] · %s" % [c.careful[1], c.lesson]
+				body = c.careful[1]
 			elif saved:
-				body = "쾅! [b]결재 도장[/b]으로 한 번 더 확인하다가 문제를 찾아 바로잡았어요. (도장은 하루 한 번)\n\n[b]오늘의 배움[/b] · %s" % c.lesson
+				body = "쾅! [b]결재 도장[/b]으로 다시 보다가 문제를 찾아 바로잡았어요."
 			else:
-				body = "처리 완료! 정말 괜찮았는지는 금요일 [b]감사 주간[/b]에 밝혀져요."
+				body = "괜찮았는지는 금요일 [b]감사 주간[/b]에 밝혀져요."
+				lesson = ""
 		"easy":
 			gain.perf += 1
 			gain.integrity -= int(c.get("easy_int", 15))
@@ -734,12 +1295,16 @@ func _pick(kind: String) -> void:
 			(state.lapses as Array).append({"id": id, "text": c.easy[2]})
 			state.lapse_today = int(state.lapse_today) + 1
 			headline = "편하게 처리했어요…"
-			body = "%s\n\n[color=#c2493d]감사 주간에 지적될 수 있어요.[/color]" % c.easy[1]
+			body = "%s\n[color=#c2493d]감사 주간에 지적될 수 있어요.[/color]" % c.easy[1]
+			stamp = "타협"
+			lesson = ""
 			mood = "sad"
 		"bonus":
 			_merge(gain, c.get("gain", {}))
 			headline = c.title
 			body = c.bonus[1]
+			stamp = "선물"
+			lesson = ""
 	_apply_gain(gain)
 	(state.hand as Array).erase(id)
 	(state.carry as Dictionary).erase(id)
@@ -747,7 +1312,8 @@ func _pick(kind: String) -> void:
 	state.today_done = int(state.today_done) + 1
 	_learn(str(c.get("term", "")))
 	var deltas := _delta_chips(gain, cost)
-	game.modal.open({"kicker": "처리 완료 · %s" % KIND_NAME.get(kind, "보너스"), "accent": UI.GREEN if kind != "easy" else UI.RED, "title": headline, "body": body, "deltas": deltas, "buttons": [{"label": "확인", "id": "c_after"}]})
+	_paper_result(kind, stamp, headline, body, lesson, deltas, "확인", "c_after")
+	_float(_float_text(gain), UI.GREEN.lightened(0.3) if kind != "easy" else Color("#ff9b8a"))
 	game.sound.play("success" if kind == "careful" else ("fail" if kind == "easy" else "coin"))
 	if mood == "sad":
 		game.dali.play_action("sad")
@@ -756,6 +1322,15 @@ func _pick(kind: String) -> void:
 		game.narami.play_action(mood)
 		game.dali.play_action("cheer")
 	game._career_write()
+
+
+func _float_text(gain: Dictionary) -> String:
+	var parts := []
+	for k in [["perf", "실적"], ["integrity", "청렴"], ["stamina", "체력"]]:
+		var v := int(gain.get(k[0], 0))
+		if v != 0:
+			parts.append("%s %+d" % [k[1], v])
+	return "  ".join(parts)
 
 
 func _merge(gain: Dictionary, extra: Dictionary) -> void:
@@ -792,14 +1367,15 @@ func _learn(term: String) -> void:
 
 
 func _after_card() -> void:
+	_paper_close()
 	game.modal.close()
 	refresh()
 	if (state.hand as Array).is_empty():
-		say("오늘 카드를 다 처리했어요! [퇴근하기]를 눌러요.")
+		say("오늘 업무 끝! 출입구로 가서 퇴근해요.")
 	elif int(state.ap) == 0:
-		say("행동력을 다 썼어요. 남은 카드는 내일로 미루거나, 체력을 써서 야근할 수 있어요.")
+		say("행동력이 없어요. 야근하거나, 남은 일은 내일로 미뤄요.")
 	else:
-		say("남은 행동력 %d. 다음 카드를 골라요." % int(state.ap))
+		say("남은 행동력 %d. 다음 표시로 가요." % int(state.ap))
 
 
 func _overtime() -> void:
@@ -855,7 +1431,7 @@ func _end_day() -> void:
 	refresh()
 	game.sound.play("success" if clean else "select")
 	if day >= 3:
-		game.modal.open({"kicker": "3일 차 퇴근 전", "accent": NAVY, "title": "잠깐! 퇴근 전에 큰일이 생겼어요", "body": rows + "\n\n이번 달의 [b]핵심 사건[/b]을 해결해야 해요.", "dismissable": false, "buttons": [{"label": "핵심 사건 열기", "id": "c_boss"}]})
+		game.modal.open({"kicker": "3일 차 퇴근 전", "accent": NAVY, "title": "잠깐! 팀장님이 찾으세요", "body": rows + "\n\n이번 달의 [b]핵심 사건[/b]이에요. [b]팀장 자리[/b]로 가서 E를 눌러요.", "dismissable": false, "buttons": [{"label": "팀장 자리로 가기", "id": "c_boss_wait"}]})
 	else:
 		game.modal.open({"kicker": "%d일 차 퇴근" % day, "accent": MINT_DARK, "title": "오늘도 수고했어요!", "body": rows + "\n\n푹 자면 체력이 1 회복돼요.", "dismissable": false, "buttons": [{"label": "다음 날 출근하기", "id": "c_next_day"}]})
 
@@ -870,11 +1446,16 @@ func _boss(step: int) -> void:
 	state.phase = "boss"
 	refresh()
 	_lead_talk()
-	game.modal.open({"kicker": "핵심 사건 %d / %d · %s" % [step + 1, c.steps.size(), c.org], "accent": UI.GOLD, "title": c.title, "body": s.text, "dismissable": false, "width": 620, "buttons": [
-		{"label": "꼼꼼히 — %s" % s.careful[0], "id": "c_boss_pick:careful", "primary": false},
-		{"label": "편하게 — %s" % s.easy[0], "id": "c_boss_pick:easy", "primary": false},
-	]})
-	say("핵심 사건이에요. 행동력은 들지 않아요. 원칙을 떠올려요!")
+	game.sound.play("open")
+	var v := _paper_open(Career.TYPES.boss.color, false)
+	_paper_head(v, "boss", c.title, c.org, -1, "상황 %d / %d" % [step + 1, c.steps.size()])
+	_paper_text(v, s.text)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	v.add_child(row)
+	row.add_child(_paper_tile("careful", "꼼꼼히", 0, s.careful[0], "원칙대로", "c_boss_pick:careful", false))
+	row.add_child(_paper_tile("easy", "편하게", 0, s.easy[0], "청렴 -%d" % int(c.get("easy_int", 15)), "c_boss_pick:easy", false))
+	say("핵심 사건! 행동력은 들지 않아요. 원칙을 떠올려요.")
 
 
 func _boss_pick(kind: String) -> void:
@@ -891,7 +1472,7 @@ func _boss_pick(kind: String) -> void:
 	else:
 		gain.perf = 1
 		gain.integrity = -int(c.get("easy_int", 15))
-		body = "%s\n\n[color=#c2493d]감사 주간에 지적될 수 있어요.[/color]" % s.easy[1]
+		body = "%s\n[color=#c2493d]감사 주간에 지적될 수 있어요.[/color]" % s.easy[1]
 		(state.lapses as Array).append({"id": info.boss, "text": s.easy[2]})
 		game.narami.play_action("sad")
 	_apply_gain(gain)
@@ -899,8 +1480,8 @@ func _boss_pick(kind: String) -> void:
 	var last := _boss_step + 1 >= (c.steps as Array).size()
 	if last:
 		state.boss_done = true
-		body += "\n\n[b]오늘의 배움[/b] · %s" % c.lesson
-	game.modal.open({"kicker": "핵심 사건 결과", "accent": UI.GREEN if kind == "careful" else UI.RED, "title": "원칙을 지켰어요" if kind == "careful" else "편한 길을 골랐어요…", "body": body, "deltas": _delta_chips(gain, 0), "dismissable": false, "buttons": [{"label": "금요일 감사 주간으로" if last else "다음 상황", "id": "c_audit" if last else "c_boss_next"}]})
+	_paper_result(kind, "원칙" if kind == "careful" else "타협", "원칙을 지켰어요" if kind == "careful" else "편한 길을 골랐어요…", body, str(c.lesson) if last else "", _delta_chips(gain, 0), "감사 주간으로" if last else "다음 상황", "c_audit" if last else "c_boss_next")
+	_float(_float_text(gain), UI.GREEN.lightened(0.3) if kind == "careful" else Color("#ff9b8a"))
 	game.sound.play("success" if kind == "careful" else "fail")
 	game._career_write()
 
@@ -908,6 +1489,7 @@ func _boss_pick(kind: String) -> void:
 # --- Audit week / quiz ------------------------------------------------------------------
 
 func _audit() -> void:
+	_paper_close()
 	if bool(state.get("audited", false)):
 		_quiz_start()
 		return
@@ -1287,6 +1869,12 @@ func _on_choice(id: String, _option: Dictionary) -> void:
 				state.day = int(state.day) + 1
 				start_day()
 			"c_boss": _boss(0)
+			"c_boss_wait":
+				game.modal.close()
+				state.phase = "boss_wait"
+				game._career_write()
+				refresh()
+				say("팀장님 자리로 가서 E를 눌러요.")
 			"c_boss_next": _boss(_boss_step + 1)
 			"c_audit": _audit()
 			"c_quiz": _quiz_start()
@@ -1300,11 +1888,14 @@ func resume() -> void:
 		"brief": begin_episode()
 		"day":
 			refresh()
-			say("이어서 일해요! %d일 차, 남은 카드 %d장." % [int(state.day), (state.hand as Array).size()])
+			say("이어서 일해요! %d일 차, 남은 업무 %d건." % [int(state.day), (state.hand as Array).size()])
 		"evening":
 			state.phase = "day"
 			_end_day_resume()
-		"boss": _boss(0)
+		"boss", "boss_wait":
+			state.phase = "boss_wait"
+			refresh()
+			say("이어서 해요! 팀장님 자리로 가서 E를 눌러요.")
 		"audit": _audit()
 		"promotion": _after_appointment()
 		"final": _final()
@@ -1314,7 +1905,9 @@ func resume() -> void:
 func _end_day_resume() -> void:
 	refresh()
 	if int(state.day) >= 3:
-		_boss(0)
+		state.phase = "boss_wait"
+		refresh()
+		say("팀장님 자리로 가서 E를 눌러요.")
 	else:
 		state.day = int(state.day) + 1
 		start_day()

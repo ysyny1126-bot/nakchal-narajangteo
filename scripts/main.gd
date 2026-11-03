@@ -77,6 +77,8 @@ var _desk: Control
 var career := {}
 var _career: Control
 var _splash_shown := false
+## Web only: an HTML <input> laid over the name box (see _name_dom_sync).
+var _name_dom := false
 ## Keeps the ending scene still while its final dialog is open.
 var ending_hold := false
 var _alt_from_ending := false
@@ -349,11 +351,13 @@ func _refresh_room_props() -> void:
 # --- Frame loop -----------------------------------------------------------
 
 func _can_move() -> bool:
+	if is_instance_valid(_career):
+		return _career.can_walk()
 	return game_active and not modal.is_open() and not title_layer.visible
 
 
 func _physics_process(delta: float) -> void:
-	if title_layer.visible or in_cutscene or ending_hold or is_instance_valid(_career):
+	if title_layer.visible or in_cutscene or ending_hold:
 		return
 	var direction := Vector3.ZERO
 	if _can_move():
@@ -409,7 +413,9 @@ func _update_companion(delta: float) -> void:
 func _process(delta: float) -> void:
 	if title_layer.visible and not in_cutscene:
 		_animate_title(delta)
-	var show_touch := _touch_enabled() and game_active and not in_cutscene and not modal.is_open() and not title_layer.visible
+	if _name_dom:
+		_name_dom_sync()
+	var show_touch := _touch_enabled() and (game_active or is_instance_valid(_career)) and _can_move() and not in_cutscene
 	if touch.visible != show_touch:
 		touch.visible = show_touch
 		touch.reset()
@@ -749,6 +755,9 @@ func _show_briefing(ep: int) -> void:
 # --- Interaction dispatch --------------------------------------------------
 
 func _interact() -> void:
+	if is_instance_valid(_career):
+		_career.interact()
+		return
 	if nearby == null:
 		hud.toast("표시된 대상 가까이 다가가 E를 누르세요.", "info")
 		return
@@ -2557,15 +2566,80 @@ func _career_ask_name() -> void:
 	edit.text_submitted.connect(func(_t: String) -> void: _on_choice("career_name_ok", {}))
 	custom.add_child(edit)
 	modal.add_buttons([{"label": "이 이름으로 출근하기", "id": "career_name_ok"}, {"label": "취소", "id": "close", "primary": false}])
-	edit.call_deferred("grab_focus")
+	if OS.has_feature("web"):
+		# Godot's web LineEdit splits Korean IME input into loose jamo
+		# (ㅇㅑㅇ…), so the browser's own input box takes the typing.
+		edit.editable = false
+		_name_dom = true
+		JavaScriptBridge.eval(NAME_DOM_OPEN)
+	else:
+		edit.call_deferred("grab_focus")
 	sound.play("open")
+
+
+const NAME_DOM_OPEN := """
+(function () {
+	var i = document.getElementById('nakchal-name');
+	if (!i) {
+		i = document.createElement('input');
+		i.id = 'nakchal-name';
+		i.type = 'text';
+		i.autocomplete = 'off';
+		i.maxLength = 8;
+		i.placeholder = '김조달';
+		document.body.appendChild(i);
+		i.addEventListener('keydown', function (e) {
+			e.stopPropagation();
+			if (e.isComposing || e.keyCode === 229) return;
+			if (e.key === 'Enter') window.nakchalName = 'ok';
+			if (e.key === 'Escape') window.nakchalName = 'cancel';
+		});
+		i.addEventListener('keyup', function (e) { e.stopPropagation(); });
+		i.addEventListener('keypress', function (e) { e.stopPropagation(); });
+	}
+	i.value = '';
+	i.style.cssText = 'position:fixed;z-index:20;box-sizing:border-box;border:2px solid #e07a35;border-radius:8px;padding:0 12px;background:#fff;color:#22302f;outline:none;font-family:Pretendard,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-weight:600;left:-9999px;top:0;';
+	window.nakchalName = '';
+	setTimeout(function () { i.focus(); }, 60);
+})();
+"""
+
+
+## Keeps the HTML name box over the LineEdit, mirrors its text and handles Enter/Esc.
+func _name_dom_sync() -> void:
+	var edit := modal.find_child("NameEdit", true, false) as LineEdit if modal.is_open() else null
+	if edit == null:
+		_name_dom_close()
+		return
+	var r := get_viewport().get_final_transform() * edit.get_global_rect()
+	var js := "(function(x,y,w,h){var c=document.querySelector('canvas');var i=document.getElementById('nakchal-name');if(!c||!i)return '';var b=c.getBoundingClientRect();var k=b.width/c.width;i.style.left=(b.left+x*k)+'px';i.style.top=(b.top+y*k)+'px';i.style.width=(w*k)+'px';i.style.height=(h*k)+'px';i.style.fontSize=Math.round(h*k*0.42)+'px';var f=window.nakchalName||'';window.nakchalName='';return f+'|'+i.value;})(%f,%f,%f,%f)" % [r.position.x, r.position.y, r.size.x, r.size.y]
+	var result := str(JavaScriptBridge.eval(js))
+	var cut := result.find("|")
+	if cut < 0:
+		return
+	edit.text = result.substr(cut + 1)
+	match result.substr(0, cut):
+		"ok": _on_choice("career_name_ok", {})
+		"cancel":
+			_name_dom_close()
+			_close_modal()
+
+
+func _name_dom_close() -> void:
+	if not _name_dom:
+		return
+	_name_dom = false
+	JavaScriptBridge.eval("(function(){var i=document.getElementById('nakchal-name');if(i){i.blur();i.remove();}window.nakchalName='';})();")
 
 
 func _career_name_entered() -> void:
 	var edit := modal.find_child("NameEdit", true, false) as LineEdit
+	if _name_dom and edit:
+		_name_dom_sync()
 	var player_name := edit.text.strip_edges() if edit else ""
 	if player_name.is_empty():
 		player_name = "김조달"
+	_name_dom_close()
 	modal.close()
 	career = _career_new_state(player_name)
 	_career_write()
