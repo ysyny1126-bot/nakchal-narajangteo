@@ -454,6 +454,12 @@ func _marker_by_id(id: String) -> Node3D:
 
 # --- Input ---------------------------------------------------------------
 
+## Cutscene keys are taken here, before the career screen's own key handling.
+func _input(event: InputEvent) -> void:
+	if in_cutscene and event is InputEventKey and event.pressed and not event.echo:
+		_unhandled_input(event)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
@@ -625,6 +631,101 @@ func _animate_title(delta: float) -> void:
 			var item := floats.get_child(i) as Node3D
 			item.position.y = item.get_meta("base_y", item.position.y) + sin(_title_clock * 1.4 + i) * 0.06
 			item.rotation.y += delta * (0.25 if i % 2 == 0 else -0.2)
+
+
+# --- Career story clips (Unity-rendered, unity_cinematic/Assets/Editor/BriefingRenderer.cs) ---
+
+## The web build leaves assets/cine out of the .pck (export filter) so the first
+## load stays small; clips are fetched from <page>/cine/ when first needed.
+const CINE_DIR := "res://assets/cine/"
+var _cine_local := {}
+var _cine_requests := {}
+
+
+func cine_prefetch(names: Array) -> void:
+	if not OS.has_feature("web"):
+		return
+	var base := str(JavaScriptBridge.eval("location.href.split('?')[0].split('#')[0].replace(/[^/]*$/, '')"))
+	for clip_name in names:
+		if _cine_local.has(clip_name) or _cine_requests.has(clip_name):
+			continue
+		var path := "user://cine_%s.ogv" % clip_name
+		var request := HTTPRequest.new()
+		request.body_size_limit = 16 * 1024 * 1024
+		add_child(request)
+		_cine_requests[clip_name] = request
+		request.request_completed.connect(func(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
+			_cine_requests.erase(clip_name)
+			request.queue_free()
+			var file := FileAccess.open(path, FileAccess.WRITE) if result == HTTPRequest.RESULT_SUCCESS and code == 200 else null
+			if file:
+				file.store_buffer(body)
+				file.close()
+				_cine_local[clip_name] = path)
+		if request.request("%scine/%s.ogv" % [base, clip_name]) != OK:
+			_cine_requests.erase(clip_name)
+			request.queue_free()
+
+
+## Plays the clips in order; any key or click skips the current one.
+func play_clips(names: Array) -> void:
+	if skip_scenarios or names.is_empty():
+		return
+	cine_prefetch(names)
+	in_cutscene = true
+	touch.visible = false
+	var root := ColorRect.new()
+	root.color = Color("#0b1417")
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.theme = UI.theme()
+	root.gui_input.connect(_on_cutscene_click)
+	modal.get_parent().add_child(root)
+	var video := VideoStreamPlayer.new()
+	video.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	video.expand = true
+	video.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(video)
+	var wait := UI.label("영상을 불러오는 중…", 15, Color(1, 1, 1, 0.75), true)
+	wait.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	wait.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	wait.grow_vertical = Control.GROW_DIRECTION_BOTH
+	root.add_child(wait)
+	var hint := PanelContainer.new()
+	hint.add_theme_stylebox_override("panel", UI.panel(Color(0, 0, 0, 0.45), Color(1, 1, 1, 0.25), 16, 8))
+	hint.position = Vector2(1280 - 150, 16)
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hint_row := HBoxContainer.new()
+	hint_row.add_theme_constant_override("separation", 6)
+	hint_row.add_child(UI.keycap("Esc"))
+	hint_row.add_child(UI.label("건너뛰기", 12, Color.WHITE, true))
+	hint.add_child(hint_row)
+	root.add_child(hint)
+	for clip_name in names:
+		_cutscene_skip = false
+		var path := ""
+		var waited := 0.0
+		while not _cutscene_skip and waited < 12.0:
+			path = _cine_local.get(clip_name, CINE_DIR + clip_name + ".ogv") if OS.has_feature("web") else CINE_DIR + clip_name + ".ogv"
+			if not OS.has_feature("web") or _cine_local.has(clip_name) or not _cine_requests.has(clip_name):
+				break
+			wait.visible = true
+			await get_tree().process_frame
+			waited += get_process_delta_time()
+		wait.visible = false
+		if _cutscene_skip or not (ResourceLoader.exists(path) or FileAccess.file_exists(path)):
+			continue
+		var stream := VideoStreamTheora.new()
+		stream.file = path
+		video.stream = stream
+		video.play()
+		await get_tree().process_frame
+		while video.is_playing() and not _cutscene_skip:
+			await get_tree().process_frame
+		video.stop()
+	root.queue_free()
+	_cutscene_skip = false
+	in_cutscene = false
 
 
 # --- Chapter scenario cutscenes ----------------------------------------------------
@@ -2551,6 +2652,7 @@ func _career_request_new() -> void:
 
 
 func _career_ask_name() -> void:
+	cine_prefetch(["intro", "ep1"])
 	var custom := modal.open({"kicker": "조달청 신규 임용", "accent": UI.NAVY, "title": "이름을 알려 주세요", "body": "오늘부터 조달청 [b]9급 서기보[/b]로 일하게 됐어요. 명패와 사원증에 들어갈 이름이에요.", "width": 520})
 	var edit := LineEdit.new()
 	edit.name = "NameEdit"
@@ -2629,7 +2731,7 @@ func _name_dom_close() -> void:
 	if not _name_dom:
 		return
 	_name_dom = false
-	JavaScriptBridge.eval("(function(){var i=document.getElementById('nakchal-name');if(i){i.blur();i.remove();}window.nakchalName='';})();")
+	JavaScriptBridge.eval("(function(){var i=document.getElementById('nakchal-name');if(i){i.blur();i.remove();}window.nakchalName='';var c=document.getElementById('canvas');if(c){c.focus();}})();")
 
 
 func _career_name_entered() -> void:
@@ -2667,6 +2769,7 @@ func _career_open(fresh: bool) -> void:
 	host.move_child(screen, modal.get_index())
 	screen.setup(self, career)
 	_career = screen
+	cine_prefetch(["ep%d" % clampi(int(career.ep), 1, 3)])
 	if fresh:
 		screen.begin_episode()
 	else:

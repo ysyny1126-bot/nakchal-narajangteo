@@ -1,6 +1,6 @@
 extends SceneTree
 
-## Dev-only: exports the four rooms and both mascots as .glb files so the
+## Dev-only: exports the rooms (incl. the PPS career office) and both mascots as .glb files so the
 ## same assets can be staged in other tools (e.g. a Unity opening cinematic).
 ## Run (windowed, so mesh data is available):
 ##   Godot --path . -s res://scripts/dev/gltf_export.gd
@@ -18,7 +18,7 @@ func _init() -> void:
 
 func _run() -> void:
 	await process_frame
-	for room in ["city", "office", "review", "showroom"]:
+	for room in ["city", "office", "review", "showroom", "pps_office"]:
 		var root := Node3D.new()
 		root.name = "Room_" + room
 		get_root().add_child(root)

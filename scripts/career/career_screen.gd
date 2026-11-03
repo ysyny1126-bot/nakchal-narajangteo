@@ -1109,6 +1109,19 @@ func begin_episode() -> void:
 	var info: Dictionary = Career.EPISODES[int(state.ep)]
 	state.phase = "brief"
 	refresh()
+	# Story clips: the game's purpose before EP1, then each episode's quest.
+	var seen: Array = state.get("clips_seen", [])
+	var clips: Array = []
+	for clip in ["intro" if int(state.ep) == 1 else "", "ep%d" % int(state.ep)]:
+		if clip != "" and not seen.has(clip):
+			clips.append(clip)
+	if not clips.is_empty():
+		await game.play_clips(clips)
+		seen.append_array(clips)
+		state.clips_seen = seen
+		game._career_write()
+	if Career.EPISODES.has(int(state.ep) + 1):
+		game.cine_prefetch(["ep%d" % (int(state.ep) + 1)])
 	_lead_talk()
 	game.modal.open({"kicker": "%s · %s 발령" % [info.code, info.dept], "accent": NAVY, "title": "%s의 브리핑" % info.lead, "body": str(info.briefing) % str(state.name), "dismissable": false, "width": 600, "buttons": [{"label": "업무 시작하기", "id": "c_start"}]})
 	say("%s 첫날! 주황색 표시로 걸어가 E를 누르면 업무가 열려요." % info.code)
