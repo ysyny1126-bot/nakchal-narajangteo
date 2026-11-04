@@ -17,8 +17,8 @@ signal legacy_pressed
 const LOGO_H := preload("res://assets/brand/pps_lockup_h.png")
 const LOGO_V := preload("res://assets/brand/pps_lockup_v.png")
 const BACKGROUND := preload("res://assets/brand/title_bg.webp")
-## Left edge of the column where the logo and buttons line up.
-const COL_X := 100.0
+## Centre line of the left column: the logo sits over the middle of the buttons.
+const COL_X := 340.0
 const VERSION := "v2.0"
 
 var _logo: Control
@@ -91,9 +91,9 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	menu.add_child(_icon_button("trophy", "도감", func() -> void: collection_pressed.emit()))
 	menu.add_child(_icon_button("book", "용어", func() -> void: terms_pressed.emit()))
 	menu.add_child(_icon_button("gear", "설정", func() -> void: settings_pressed.emit()))
-	# Game logo: kicker, the big title and its name plate on one left edge.
+	# Game logo: kicker, the big title and its name plate on one centre line.
 	_logo = Control.new()
-	_logo.position = Vector2(COL_X, 168)
+	_logo.position = Vector2(COL_X, 150)
 	_logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_logo)
 	var heavy := FontVariation.new()
@@ -105,22 +105,28 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	big.add_theme_constant_override("shadow_offset_x", 0)
 	big.add_theme_constant_override("shadow_offset_y", 5)
 	big.add_theme_constant_override("shadow_outline_size", 14)
-	big.reset_size()
-	big.position = Vector2(-6, 0)
-	_logo.add_child(big)
+	# A container keeps the stack centred on _logo even if the font finishes
+	# loading after build(); measured sizes here can still be zero on the web.
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", -22)
+	stack.alignment = BoxContainer.ALIGNMENT_BEGIN
+	_centred(stack)
+	_logo.add_child(stack)
 	var kicker := _outlined("공공조달 업무 성장 시뮬레이션", 21, Color("#ffffff"), Color(0.07, 0.25, 0.19, 0.55), 6)
-	kicker.reset_size()
-	kicker.position = Vector2(2, -kicker.size.y + 8)
-	_logo.add_child(kicker)
+	kicker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	kicker.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(kicker)
+	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	big.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(big)
 	var ribbon := PanelContainer.new()
 	var ribbon_style := UI.panel(Color(0.1, 0.22, 0.27, 0.68), Color(1, 0.96, 0.86, 0.55), 16, 24, 2)
 	ribbon_style.content_margin_top = 5
 	ribbon_style.content_margin_bottom = 7
 	ribbon.add_theme_stylebox_override("panel", ribbon_style)
 	ribbon.add_child(UI.label("조달청 사원 키우기", 40, Color("#fffaf0"), true))
-	ribbon.reset_size()
-	ribbon.position = Vector2(0, big.size.y - 24)
-	_logo.add_child(ribbon)
+	ribbon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(ribbon)
 	# Start / continue (bottom centre)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
@@ -135,11 +141,8 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 		tag.position = Vector2(135 - 60, -14)
 		cont.add_child(tag)
 	row.add_child(_start)
-	row.reset_size()
-	var row_w := row.get_combined_minimum_size().x
-	if row_w > 600.0:
-		row.add_theme_constant_override("separation", 12)
-	row.position = Vector2(COL_X, 500)
+	row.position = Vector2(COL_X, 490)
+	_centred(row)
 	_hint = _outlined("Enter 이어하기 · 1 새 게임 · 3 설정 · 4 도감 · 5 내 책상" if has_save else "Enter 또는 버튼을 눌러 시작", 14, Color("#ffffff"), Color("#1c3540"), 5)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	# Bottom bar: chapters (left) and records/version (right)
@@ -171,20 +174,24 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	info.add_child(ver)
 	var hint_holder := Control.new()
-	hint_holder.position = Vector2(COL_X + 4, 596)
+	hint_holder.position = Vector2(COL_X, 586)
 	hint_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(hint_holder)
-	_hint.reset_size()
-	_hint.position = Vector2.ZERO
+	_centred(_hint)
 	hint_holder.add_child(_hint)
 
 
 
-func _center(label: Label, offset: Vector2) -> void:
-	label.reset_size()
-	var size := label.get_combined_minimum_size()
-	label.position = offset - size * 0.5
-	label.pivot_offset = size * 0.5
+## Pins a container's top centre to its position so it grows to both sides.
+func _centred(c: Control) -> void:
+	var at := c.position
+	c.anchor_left = 0.0
+	c.anchor_right = 0.0
+	c.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	c.offset_left = at.x
+	c.offset_right = at.x
+	c.offset_top = at.y
+	c.offset_bottom = at.y
 
 
 func _outlined(text: String, size: int, color: Color, outline: Color, outline_px: int) -> Label:
