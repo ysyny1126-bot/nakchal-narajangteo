@@ -965,25 +965,41 @@ func _paper_footer(v: VBoxContainer, extras: Array) -> void:
 
 
 ## The card flips to its result: a stamp, what happened, the lesson and the numbers.
-func _paper_result(kind: String, stamp: String, headline: String, body: String, lesson: String, deltas: Array, next_label: String, next_id: String) -> void:
+func _paper_result(kind: String, stamp: String, headline: String, body: String, lesson: String, deltas: Array, next_label: String, next_id: String, combo: int = 0, combo_bonus: bool = false) -> void:
 	var accent: Color = KIND_COLOR.get(kind, UI.GOLD)
 	var v := _paper_open(accent, false)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 18)
 	v.add_child(top)
+	# The seal sits in a plain holder so the ink burst can spill past its edges.
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(96, 96)
+	top.add_child(holder)
 	var seal := PanelContainer.new()
 	var ss := UI.panel(Color(accent, 0.06), accent, 48, 0, 4)
 	seal.add_theme_stylebox_override("panel", ss)
 	seal.custom_minimum_size = Vector2(96, 96)
+	seal.size = Vector2(96, 96)
 	var sl := UI.label(stamp, 17, accent, true)
 	sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	seal.add_child(sl)
 	seal.rotation = -0.18
 	seal.pivot_offset = Vector2(48, 48)
-	seal.scale = Vector2(1.6, 1.6)
-	seal.create_tween().tween_property(seal, "scale", Vector2.ONE, 0.25).set_delay(0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	top.add_child(seal)
+	holder.add_child(seal)
+	if kind == "easy":
+		# A compromise gets no slam, just a quiet, faded seal.
+		seal.modulate.a = 0.0
+		seal.create_tween().tween_property(seal, "modulate:a", 0.75, 0.4).set_delay(0.15)
+	else:
+		seal.scale = Vector2(2.4, 2.4)
+		seal.modulate.a = 0.0
+		var slam := seal.create_tween()
+		slam.tween_interval(0.12)
+		slam.tween_property(seal, "modulate:a", 1.0, 0.05)
+		slam.parallel().tween_property(seal, "scale", Vector2(0.9, 0.9), 0.13).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		slam.tween_callback(_stamp_hit.bind(holder, accent, combo_bonus))
+		slam.tween_property(seal, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	var words := VBoxContainer.new()
 	words.add_theme_constant_override("separation", 6)
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1010,6 +1026,8 @@ func _paper_result(kind: String, stamp: String, headline: String, body: String, 
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 6)
 	v.add_child(foot)
+	if combo >= 2:
+		foot.add_child(UI.chip("원칙 콤보 ×%d%s" % [combo, " · 보너스!" if combo_bonus else ""], UI.GOLD, Color.WHITE, 13))
 	for d in deltas:
 		var good := bool(d.get("good", true))
 		foot.add_child(UI.chip("%s %s" % [d.label, d.value], Color("#e3f0e4") if good else Color("#f6e0dc"), UI.GREEN.darkened(0.2) if good else UI.RED.darkened(0.15), 13))
@@ -1024,6 +1042,66 @@ func _paper_result(kind: String, stamp: String, headline: String, body: String, 
 	ok.pressed.connect(_paper_choice.bind(next_id))
 	foot.add_child(ok)
 	_paper_ok = next_id
+
+
+## The moment the seal lands: a thud, the card dips, and paper bits fly out.
+func _stamp_hit(holder: Control, accent: Color, combo_bonus: bool) -> void:
+	game.sound.play("stamp")
+	if combo_bonus:
+		get_tree().create_timer(0.18).timeout.connect(func() -> void: game.sound.play("combo"))
+	if is_instance_valid(_paper_card):
+		var card := _paper_card
+		var t := card.create_tween()
+		t.tween_property(card, "scale", Vector2(0.985, 0.985), 0.05)
+		t.tween_property(card, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var burst := Control.new()
+	burst.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(burst)
+	var colors := [accent, UI.GOLD, MINT, Color("#f2a08a")]
+	var bits := []
+	for i in 14:
+		bits.append([TAU * i / 14.0 + randf_range(-0.2, 0.2), randf_range(70.0, 130.0), colors[i % colors.size()], randf() * TAU])
+	burst.draw.connect(func() -> void:
+		var p := float(burst.get_meta("t", 0.0))
+		var o := Vector2(48, 48)
+		burst.draw_arc(o, 48.0 + 26.0 * p, 0.0, TAU, 40, Color(accent, 0.45 * (1.0 - p)), 3.0, true)
+		for b in bits:
+			var at: Vector2 = o + Vector2.from_angle(b[0]) * float(b[1]) * p + Vector2(0, 70.0 * p * p)
+			burst.draw_set_transform(at, float(b[3]) + p * 7.0, Vector2.ONE)
+			burst.draw_rect(Rect2(-5, -3, 10, 6), Color(b[2], 1.0 - p))
+		burst.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE))
+	var fly := burst.create_tween()
+	fly.tween_method(func(value: float) -> void:
+		burst.set_meta("t", value)
+		burst.queue_redraw(), 0.0, 1.0, 0.75).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	fly.tween_callback(burst.queue_free)
+
+
+## Combo of principled choices: careful, or quick on a card with no risk.
+## Every third in a row adds a bonus point of performance.
+func _count_combo(principled: bool) -> Array:
+	var combo := int(state.get("combo", 0)) + 1 if principled else 0
+	state.combo = combo
+	return [combo, principled and combo % 3 == 0]
+
+
+## Dali's face and a short line after each pick.
+func _react(kind: String, combo: int) -> void:
+	match kind:
+		"easy":
+			_dali.react("oops")
+			say("앗… 괜찮아요. 다음엔 원칙대로 해 봐요!")
+		"careful", "principled":
+			_dali.react("happy")
+			if combo >= 2:
+				say("원칙 콤보 %d! 이 기세로 계속 가요!" % combo)
+			else:
+				say(["최고예요! 원칙대로 딱!", "역시 꼼꼼해요!", "깔끔하게 처리했어요!", "든든한 주무관이에요!"][randi() % 4])
+		"quick":
+			_dali.nudge()
+			say("결과는 금요일 감사 주간에 나와요. 두근두근!")
+		_:
+			_dali.react("happy")
 
 
 ## Simple pictures per card type so the card reads before its words do.
@@ -1340,6 +1418,10 @@ func _pick(kind: String) -> void:
 			body = c.bonus[1]
 			stamp = "선물"
 			lesson = ""
+	var principled := kind == "careful" or (kind == "quick" and int(c.get("risk", 0)) == 0)
+	var combo_info := [int(state.get("combo", 0)), false] if kind == "bonus" else _count_combo(principled)
+	if combo_info[1]:
+		gain.perf += 1
 	_apply_gain(gain)
 	(state.hand as Array).erase(id)
 	(state.carry as Dictionary).erase(id)
@@ -1347,7 +1429,8 @@ func _pick(kind: String) -> void:
 	state.today_done = int(state.today_done) + 1
 	_learn(str(c.get("term", "")))
 	var deltas := _delta_chips(gain, cost)
-	_paper_result(kind, stamp, headline, body, lesson, deltas, "확인", "c_after")
+	_paper_result(kind, stamp, headline, body, lesson, deltas, "확인", "c_after", int(combo_info[0]) if principled else 0, bool(combo_info[1]))
+	_react("principled" if principled else kind, int(combo_info[0]))
 	_float(_float_text(gain), UI.GREEN.lightened(0.3) if kind != "easy" else Color("#ff9b8a"))
 	game.sound.play("success" if kind == "careful" else ("fail" if kind == "easy" else "coin"))
 	if mood == "sad":
@@ -1504,18 +1587,24 @@ func _boss_pick(kind: String) -> void:
 		gain.integrity = 3
 		body = s.careful[1]
 		game.narami.play_action("cheer")
+		game.dali.play_action("cheer")
 	else:
 		gain.perf = 1
 		gain.integrity = -int(c.get("easy_int", 15))
 		body = "%s\n[color=#c2493d]감사 주간에 지적될 수 있어요.[/color]" % s.easy[1]
 		(state.lapses as Array).append({"id": info.boss, "text": s.easy[2]})
 		game.narami.play_action("sad")
+		game.dali.play_action("sad")
+	var combo_info := _count_combo(kind == "careful")
+	if combo_info[1]:
+		gain.perf += 1
 	_apply_gain(gain)
 	_learn(str(c.get("term", "")))
 	var last := _boss_step + 1 >= (c.steps as Array).size()
 	if last:
 		state.boss_done = true
-	_paper_result(kind, "원칙" if kind == "careful" else "타협", "원칙을 지켰어요" if kind == "careful" else "편한 길을 골랐어요…", body, str(c.lesson) if last else "", _delta_chips(gain, 0), "감사 주간으로" if last else "다음 상황", "c_audit" if last else "c_boss_next")
+	_paper_result(kind, "원칙" if kind == "careful" else "타협", "원칙을 지켰어요" if kind == "careful" else "편한 길을 골랐어요…", body, str(c.lesson) if last else "", _delta_chips(gain, 0), "감사 주간으로" if last else "다음 상황", "c_audit" if last else "c_boss_next", int(combo_info[0]), bool(combo_info[1]))
+	_react(kind, int(combo_info[0]))
 	_float(_float_text(gain), UI.GREEN.lightened(0.3) if kind == "careful" else Color("#ff9b8a"))
 	game.sound.play("success" if kind == "careful" else "fail")
 	game._career_write()
