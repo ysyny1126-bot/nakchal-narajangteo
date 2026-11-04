@@ -17,8 +17,8 @@ signal legacy_pressed
 const LOGO_H := preload("res://assets/brand/pps_lockup_h.png")
 const LOGO_V := preload("res://assets/brand/pps_lockup_v.png")
 const BACKGROUND := preload("res://assets/brand/title_bg.webp")
-## Centre of the left column where the logo and buttons sit.
-const COL_X := 330.0
+## Left edge of the column where the logo and buttons line up.
+const COL_X := 100.0
 const VERSION := "v2.0"
 
 var _logo: Control
@@ -70,7 +70,7 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	add_child(bottom_shade)
 	# Publisher badge (top left)
 	var badge := PanelContainer.new()
-	var badge_style := UI.panel(Color(1, 1, 1, 0.94), Color(1, 1, 1, 0.94), 22, 14)
+	var badge_style := UI.panel(Color(1, 1, 1, 0.62), Color(1, 1, 1, 0.8), 22, 14, 1)
 	badge_style.content_margin_top = 7
 	badge_style.content_margin_bottom = 7
 	badge.add_theme_stylebox_override("panel", badge_style)
@@ -91,34 +91,35 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	menu.add_child(_icon_button("trophy", "도감", func() -> void: collection_pressed.emit()))
 	menu.add_child(_icon_button("book", "용어", func() -> void: terms_pressed.emit()))
 	menu.add_child(_icon_button("gear", "설정", func() -> void: settings_pressed.emit()))
-	# Game logo (top centre)
+	# Game logo: kicker, the big title and its name plate on one left edge.
 	_logo = Control.new()
-	_logo.position = Vector2(COL_X, 250)
+	_logo.position = Vector2(COL_X, 168)
 	_logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_logo)
-	var kicker := _outlined("공공조달 업무 성장 시뮬레이션", 19, Color("#ffffff"), Color("#1d4a3a"), 7)
-	_center(kicker, Vector2(0, -132))
-	_logo.add_child(kicker)
-	var big := _outlined("낙찰!", 124, Color("#ffb03a"), Color("#1f3d2e"), 20)
-	big.add_theme_color_override("font_shadow_color", Color(0.06, 0.2, 0.16, 0.55))
+	var heavy := FontVariation.new()
+	heavy.base_font = UI.Props.font(true)
+	heavy.variation_embolden = 0.35
+	var big := _outlined("낙찰!", 172, Color("#ffb33f"), Color("#7a3d12"), 8)
+	big.add_theme_font_override("font", heavy)
+	big.add_theme_color_override("font_shadow_color", Color(0.03, 0.12, 0.09, 0.32))
 	big.add_theme_constant_override("shadow_offset_x", 0)
-	big.add_theme_constant_override("shadow_offset_y", 9)
-	_center(big, Vector2(0, -52))
-	big.rotation = deg_to_rad(-4)
+	big.add_theme_constant_override("shadow_offset_y", 5)
+	big.add_theme_constant_override("shadow_outline_size", 14)
+	big.reset_size()
+	big.position = Vector2(-6, 0)
 	_logo.add_child(big)
+	var kicker := _outlined("공공조달 업무 성장 시뮬레이션", 21, Color("#ffffff"), Color(0.07, 0.25, 0.19, 0.55), 6)
+	kicker.reset_size()
+	kicker.position = Vector2(2, -kicker.size.y + 8)
+	_logo.add_child(kicker)
 	var ribbon := PanelContainer.new()
-	var ribbon_style := UI.panel(Color("#1f3d4a"), Color("#fff3d6"), 14, 22, 4)
-	ribbon_style.content_margin_top = 4
-	ribbon_style.content_margin_bottom = 6
-	ribbon_style.shadow_color = Color(0, 0, 0, 0.3)
-	ribbon_style.shadow_size = 8
-	ribbon_style.shadow_offset = Vector2(0, 5)
+	var ribbon_style := UI.panel(Color(0.1, 0.22, 0.27, 0.68), Color(1, 0.96, 0.86, 0.55), 16, 24, 2)
+	ribbon_style.content_margin_top = 5
+	ribbon_style.content_margin_bottom = 7
 	ribbon.add_theme_stylebox_override("panel", ribbon_style)
-	var sub := _outlined("조달청 사원 키우기", 38, Color("#ffffff"), Color("#1f3d4a"), 4)
-	ribbon.add_child(sub)
+	ribbon.add_child(UI.label("조달청 사원 키우기", 40, Color("#fffaf0"), true))
 	ribbon.reset_size()
-	ribbon.position = Vector2(-ribbon.get_combined_minimum_size().x * 0.5, 34)
-	ribbon.rotation = deg_to_rad(-2)
+	ribbon.position = Vector2(0, big.size.y - 24)
 	_logo.add_child(ribbon)
 	# Start / continue (bottom centre)
 	var row := HBoxContainer.new()
@@ -138,7 +139,7 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	var row_w := row.get_combined_minimum_size().x
 	if row_w > 600.0:
 		row.add_theme_constant_override("separation", 12)
-	row.position = Vector2(COL_X - row_w * 0.5, 448)
+	row.position = Vector2(COL_X, 500)
 	_hint = _outlined("Enter 이어하기 · 1 새 게임 · 3 설정 · 4 도감 · 5 내 책상" if has_save else "Enter 또는 버튼을 눌러 시작", 14, Color("#ffffff"), Color("#1c3540"), 5)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	# Bottom bar: chapters (left) and records/version (right)
@@ -170,11 +171,11 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	info.add_child(ver)
 	var hint_holder := Control.new()
-	hint_holder.position = Vector2(COL_X, 548)
+	hint_holder.position = Vector2(COL_X + 4, 596)
 	hint_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(hint_holder)
 	_hint.reset_size()
-	_hint.position = Vector2(-_hint.get_combined_minimum_size().x * 0.5, 0)
+	_hint.position = Vector2.ZERO
 	hint_holder.add_child(_hint)
 
 
