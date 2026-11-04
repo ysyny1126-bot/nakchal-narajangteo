@@ -371,13 +371,14 @@ func _refresh_hand() -> void:
 		_hand.add_child(_task_chip("", "오늘 업무 끝!", "출입구에서 퇴근", MINT, "door"))
 	else:
 		var spots: Dictionary = game.layout.get("spots", {})
-		for id in hand:
-			var c: Dictionary = Career.card(str(id))
+		for i in hand.size():
+			var id: String = str(hand[i])
+			var c: Dictionary = Career.card(id)
 			var spot: String = SPOT_OF.get(c.type, "desk")
 			var where: String = spots[spot].name if spots.has(spot) else ""
 			if (state.carry as Dictionary).has(id):
 				where = "어제 밀림 · " + where
-			_hand.add_child(_task_chip(str(id), c.title, where, Career.TYPES[c.type].color, spot))
+			_hand.add_child(_task_chip(id, c.title, where, Career.TYPES[c.type].color, spot, i + 1))
 	var ap := int(state.ap)
 	_ot_btn.visible = state.phase == "day" and ap == 0 and not hand.is_empty() and not bool(state.overtime)
 	_end_btn.visible = state.phase == "day"
@@ -385,7 +386,7 @@ func _refresh_hand() -> void:
 
 
 ## One entry of the task list; clicking it points at the spot in the office.
-func _task_chip(id: String, title: String, where: String, color: Color, spot: String) -> Control:
+func _task_chip(id: String, title: String, where: String, color: Color, spot: String, num: int = 0) -> Control:
 	var n := maxi((state.hand as Array).size(), 1)
 	var w := clampf((600.0 - 8.0 * (n - 1)) / n, 120.0, 190.0)
 	var b := Button.new()
@@ -398,15 +399,21 @@ func _task_chip(id: String, title: String, where: String, color: Color, spot: St
 		st.border_width_left = 6
 		b.add_theme_stylebox_override(m, st)
 	b.pressed.connect(_point_to.bind(spot))
+	var left := 12.0
+	if num > 0:
+		var badge := _num_badge(num, color, 22)
+		badge.position = Vector2(12, 11)
+		b.add_child(badge)
+		left = 40.0
 	var v := VBoxContainer.new()
-	v.position = Vector2(12, 4)
-	v.size = Vector2(w - 16, 38)
+	v.position = Vector2(left, 4)
+	v.size = Vector2(w - left - 4, 38)
 	v.add_theme_constant_override("separation", 0)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_child(v)
 	var t := UI.label(title, 13, UI.INK, true)
 	t.clip_text = true
-	t.custom_minimum_size = Vector2(w - 18, 0)
+	t.custom_minimum_size = Vector2(w - left - 6, 0)
 	v.add_child(t)
 	var risk := ""
 	if id != "":
@@ -415,7 +422,7 @@ func _task_chip(id: String, title: String, where: String, color: Color, spot: St
 			risk = "  " + "●".repeat(int(c.risk)) + "○".repeat(3 - int(c.risk))
 	var l := UI.label(where + risk, 10, UI.MUTED, true)
 	l.clip_text = true
-	l.custom_minimum_size = Vector2(w - 18, 0)
+	l.custom_minimum_size = Vector2(w - left - 6, 0)
 	v.add_child(l)
 	for child in v.get_children():
 		child.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1123,7 +1130,18 @@ func begin_episode() -> void:
 	if Career.EPISODES.has(int(state.ep) + 1):
 		game.cine_prefetch(["ep%d" % (int(state.ep) + 1)])
 	_lead_talk()
-	game.modal.open({"kicker": "%s · %s 발령" % [info.code, info.dept], "accent": NAVY, "title": "%s의 브리핑" % info.lead, "body": str(info.briefing) % str(state.name), "dismissable": false, "width": 600, "buttons": [{"label": "업무 시작하기", "id": "c_start"}]})
+	var custom: VBoxContainer = game.modal.open({"kicker": "%s · %s 발령" % [info.code, info.dept], "accent": NAVY, "title": "%s의 브리핑" % info.lead, "body": str(info.briefing) % str(state.name), "dismissable": false, "width": 560})
+	custom.add_theme_constant_override("separation", 10)
+	custom.add_child(UI.label("이번 달 할 일", 12, UI.MUTED, true))
+	var todo: Array = info.get("todo", [])
+	for i in todo.size():
+		var step := HBoxContainer.new()
+		step.add_theme_constant_override("separation", 10)
+		step.add_child(_num_badge(i + 1, UI.ORANGE, 26))
+		step.add_child(UI.label(str(todo[i]), 16, UI.INK, true))
+		custom.add_child(step)
+	custom.add_child(_hint_row(["위험해 보이면", ["꼼꼼히", "careful"], "  간단하면", ["빠르게", "quick"]]))
+	game.modal.add_buttons([{"label": "업무 시작하기", "id": "c_start"}])
 	say("%s 첫날! 주황색 표시로 걸어가 E를 누르면 업무가 열려요." % info.code)
 
 
@@ -1189,6 +1207,10 @@ func _open_card(id: String) -> void:
 	_paper_text(v, c.text)
 	if c.has("doc"):
 		v.add_child(_doc_panel(c.doc))
+	if c.has("quick") and int(c.risk) >= 2:
+		v.add_child(_hint_row(["위험해 보이는 일이에요", ["꼼꼼히", "careful"], "추천"]))
+	elif c.has("quick") and int(c.risk) == 0:
+		v.add_child(_hint_row(["간단한 일이에요", ["빠르게", "quick"], "해도 괜찮아요"]))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	v.add_child(row)
@@ -1924,6 +1946,41 @@ func _end_day_resume() -> void:
 	else:
 		state.day = int(state.day) + 1
 		start_day()
+
+
+## Round number badge for numbered to-do lists.
+func _num_badge(n: int, color: Color, d: float) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(d, d)
+	c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.draw.connect(func() -> void: c.draw_circle(Vector2(d, d) * 0.5, d * 0.5, color))
+	var l := UI.label(str(n), int(d * 0.55), Color.WHITE, true)
+	l.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.add_child(l)
+	return c
+
+
+## A tip strip; [text, kind] parts become chips in that choice's colour.
+func _hint_row(parts: Array) -> Control:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", UI.panel(Color("#fbf3df"), Color("#ecd9ae"), 10, 10))
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	p.add_child(h)
+	h.add_child(UI.chip("힌트", UI.GOLD, Color.WHITE, 11))
+	for part in parts:
+		if part is Array:
+			h.add_child(UI.chip(str(part[0]), KIND_COLOR[part[1]], Color.WHITE, 13))
+		else:
+			var l := UI.label(str(part), 13, UI.INK, true)
+			l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			h.add_child(l)
+	return p
 
 
 func _lead_talk() -> void:

@@ -36,7 +36,8 @@ const EPISODES := {
 	1: {
 		"code": "EP1", "title": "첫 출근", "topic": "구매 규격과 입찰", "rank": 1,
 		"dept": "구매사업국 · 물품구매과", "room": "pps_office", "lead": "박 팀장",
-		"briefing": "어서 와요, [b]%s[/b] 주무관! 이번 달은 ○○시청 [b]회의용 탁자 50개[/b] 구매 건을 맡아요.\n\n규격서를 검토하고, 공고와 개찰을 거쳐, 1순위 업체를 [b]적격심사[/b]하는 것까지가 목표예요. 위험해 보이는 일은 꼼꼼히, 간단한 일은 빠르게!",
+		"briefing": "어서 와요, [b]%s[/b] 주무관! 이번 달은 [b]회의용 탁자 50개[/b] 구매예요.",
+		"todo": ["규격서 검토", "공고 · 개찰", "1순위 업체 적격심사"],
 		"goal": "탁자 구매 건을 규격 검토부터 적격심사까지 마치기",
 		"days": [["e1_spec", "e1_call", "e1_date"], ["e1_basis", "e1_reserve", "e1_dinner"], ["e1_open", "e1_protest", "e1_coffee"]],
 		"boss": "e1_boss",
@@ -44,7 +45,8 @@ const EPISODES := {
 	2: {
 		"code": "EP2", "title": "쇼핑몰 지킴이", "topic": "종합쇼핑몰과 다수공급자계약", "rank": 2,
 		"dept": "구매사업국 · 쇼핑몰운영과", "room": "pps_office", "lead": "한 과장",
-		"briefing": "[b]%s[/b] 서기, 승진 축하해요! 이번 달은 [b]나라장터 종합쇼핑몰[/b]을 지켜요.\n\n상품 등록을 심사하고, 기관의 구매 문의에 답하고, 가격이 수상하게 움직이면 먼저 알아채야 해요.",
+		"briefing": "[b]%s[/b] 서기, 승진 축하해요! 이번 달은 [b]종합쇼핑몰[/b]을 지켜요.",
+		"todo": ["상품 등록 심사", "기관 구매 문의 답변", "수상한 가격 잡아내기"],
 		"goal": "쇼핑몰 상품·가격을 공정하게 관리하기",
 		"days": [["e2_register", "e2_school", "e2_guide"], ["e2_sale", "e2_gift", "e2_pricecut"], ["e2_cartel", "e2_rank", "e2_walk"]],
 		"boss": "e2_boss",
@@ -52,7 +54,8 @@ const EPISODES := {
 	3: {
 		"code": "EP3", "title": "현장으로", "topic": "납품·검사·대금 지급", "rank": 3,
 		"dept": "공공물자국 · 품질관리과", "room": "pps_office", "lead": "오 과장",
-		"briefing": "[b]%s[/b] 주사보, 이제 현장이에요. 계약한 탁자가 [b]제대로, 제때[/b] 납품되는지 확인해요.\n\n납기 협의, 지체상금 계산, 납품 검사, 대금 청구 확인까지. 연말이라 바쁘지만 원칙은 그대로!",
+		"briefing": "[b]%s[/b] 주사보, 이제 현장이에요. 탁자가 [b]제대로, 제때[/b] 오는지 확인해요.",
+		"todo": ["납기 협의 · 지체상금", "납품 검사", "대금 청구 확인"],
 		"goal": "탁자 50개 납품을 검사하고 대금을 바르게 지급하기",
 		"days": [["e3_schedule", "e3_late", "e3_delay"], ["e3_inspect", "e3_envelope", "e3_thanks"], ["e3_invoice", "e3_when", "e3_warranty"]],
 		"boss": "e3_boss",
