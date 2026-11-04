@@ -169,8 +169,11 @@ func _career_shots() -> void:
 	game.career.desk.earned = ["law_book", "magnifier", "trophy"]
 	game.career.desk.owned = {"plant": 1, "lamp": 1, "coffee": 1}
 	game._career_stage()
+	cs.refresh()
+	await _wait(30)
+	await _shot("career_10b_ep3_site")
 	cs._final()
-	await _wait(80)
+	await _wait(150)
 	await _shot("career_11_final")
 	game._career_home()
 	await _wait(30)

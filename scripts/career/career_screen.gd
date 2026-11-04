@@ -366,7 +366,7 @@ func _refresh_hand() -> void:
 		child.queue_free()
 	var hand: Array = state.hand
 	if state.phase == "boss_wait":
-		_hand.add_child(_task_chip("", "핵심 사건", "팀장 자리", Career.TYPES.boss.color, "lead"))
+		_hand.add_child(_task_chip("", "핵심 사건", _lead_spot(), Career.TYPES.boss.color, "lead"))
 	elif hand.is_empty() and state.phase == "day":
 		_hand.add_child(_task_chip("", "오늘 업무 끝!", "출입구에서 퇴근", MINT, "door"))
 	else:
@@ -971,35 +971,14 @@ func _paper_result(kind: String, stamp: String, headline: String, body: String, 
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 18)
 	v.add_child(top)
-	# The seal sits in a plain holder so the ink burst can spill past its edges.
-	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(96, 96)
+	var holder := _seal(stamp, accent, 96)
 	top.add_child(holder)
-	var seal := PanelContainer.new()
-	var ss := UI.panel(Color(accent, 0.06), accent, 48, 0, 4)
-	seal.add_theme_stylebox_override("panel", ss)
-	seal.custom_minimum_size = Vector2(96, 96)
-	seal.size = Vector2(96, 96)
-	var sl := UI.label(stamp, 17, accent, true)
-	sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	seal.add_child(sl)
-	seal.rotation = -0.18
-	seal.pivot_offset = Vector2(48, 48)
-	holder.add_child(seal)
 	if kind == "easy":
 		# A compromise gets no slam, just a quiet, faded seal.
-		seal.modulate.a = 0.0
-		seal.create_tween().tween_property(seal, "modulate:a", 0.75, 0.4).set_delay(0.15)
+		var faded: Control = holder.get_child(0)
+		faded.create_tween().tween_property(faded, "modulate:a", 0.75, 0.4).set_delay(0.15)
 	else:
-		seal.scale = Vector2(2.4, 2.4)
-		seal.modulate.a = 0.0
-		var slam := seal.create_tween()
-		slam.tween_interval(0.12)
-		slam.tween_property(seal, "modulate:a", 1.0, 0.05)
-		slam.parallel().tween_property(seal, "scale", Vector2(0.9, 0.9), 0.13).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		slam.tween_callback(_stamp_hit.bind(holder, accent, combo_bonus))
-		slam.tween_property(seal, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_slam(holder, accent, 0.12, _paper_card, "combo" if combo_bonus else "")
 	var words := VBoxContainer.new()
 	words.add_theme_constant_override("separation", 6)
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1044,36 +1023,74 @@ func _paper_result(kind: String, stamp: String, headline: String, body: String, 
 	_paper_ok = next_id
 
 
-## The moment the seal lands: a thud, the card dips, and paper bits fly out.
-func _stamp_hit(holder: Control, accent: Color, combo_bonus: bool) -> void:
-	game.sound.play("stamp")
-	if combo_bonus:
-		get_tree().create_timer(0.18).timeout.connect(func() -> void: game.sound.play("combo"))
-	if is_instance_valid(_paper_card):
-		var card := _paper_card
-		var t := card.create_tween()
-		t.tween_property(card, "scale", Vector2(0.985, 0.985), 0.05)
-		t.tween_property(card, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+## A round ink seal in a plain holder, so its burst can spill past the edges.
+## The seal starts hidden; _slam() brings it down.
+func _seal(text: String, color: Color, d: float, font: int = 17) -> Control:
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(d, d)
+	holder.size = Vector2(d, d)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var seal := PanelContainer.new()
+	seal.add_theme_stylebox_override("panel", UI.panel(Color(color, 0.06), color, int(d * 0.5), 0, 4))
+	seal.custom_minimum_size = Vector2(d, d)
+	seal.size = Vector2(d, d)
+	seal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var l := UI.label(text, font, color, true)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	seal.add_child(l)
+	seal.rotation = -0.18
+	seal.pivot_offset = Vector2(d, d) * 0.5
+	seal.modulate.a = 0.0
+	holder.add_child(seal)
+	return holder
+
+
+## Brings a seal down hard: thud, the target dips, ink ring and paper bits.
+## extra_sound plays just after the thud (e.g. "combo").
+func _slam(holder: Control, accent: Color, delay: float, dip: Control = null, extra_sound: String = "", reach: float = 1.0) -> void:
+	var seal: Control = holder.get_child(0)
+	seal.scale = Vector2(2.4, 2.4)
+	var slam := seal.create_tween()
+	slam.tween_interval(delay)
+	slam.tween_property(seal, "modulate:a", 1.0, 0.05)
+	slam.parallel().tween_property(seal, "scale", Vector2(0.9, 0.9), 0.13).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	slam.tween_callback(func() -> void:
+		game.sound.play("stamp")
+		if extra_sound != "":
+			get_tree().create_timer(0.18).timeout.connect(func() -> void: game.sound.play(extra_sound))
+		if is_instance_valid(dip):
+			var t := dip.create_tween()
+			t.tween_property(dip, "scale", Vector2(0.985, 0.985), 0.05)
+			t.tween_property(dip, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_burst(holder, holder.size * 0.5, accent, reach))
+	slam.tween_property(seal, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Ink ring plus paper bits flying out from `center` of `parent`; reach scales the spread.
+func _burst(parent: Control, center: Vector2, accent: Color, reach: float = 1.0) -> void:
 	var burst := Control.new()
 	burst.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.add_child(burst)
+	parent.add_child(burst)
 	var colors := [accent, UI.GOLD, MINT, Color("#f2a08a")]
 	var bits := []
-	for i in 14:
-		bits.append([TAU * i / 14.0 + randf_range(-0.2, 0.2), randf_range(70.0, 130.0), colors[i % colors.size()], randf() * TAU])
+	var count := int(14 * maxf(1.0, reach * 0.8))
+	for i in count:
+		bits.append([TAU * i / float(count) + randf_range(-0.2, 0.2), randf_range(70.0, 130.0) * reach, colors[i % colors.size()], randf() * TAU])
+	var ring := minf(parent.size.x, parent.size.y) * 0.5
 	burst.draw.connect(func() -> void:
 		var p := float(burst.get_meta("t", 0.0))
-		var o := Vector2(48, 48)
-		burst.draw_arc(o, 48.0 + 26.0 * p, 0.0, TAU, 40, Color(accent, 0.45 * (1.0 - p)), 3.0, true)
+		if reach <= 1.0:
+			burst.draw_arc(center, ring + 26.0 * p, 0.0, TAU, 40, Color(accent, 0.45 * (1.0 - p)), 3.0, true)
 		for b in bits:
-			var at: Vector2 = o + Vector2.from_angle(b[0]) * float(b[1]) * p + Vector2(0, 70.0 * p * p)
+			var at: Vector2 = center + Vector2.from_angle(b[0]) * float(b[1]) * p + Vector2(0, 70.0 * reach * p * p)
 			burst.draw_set_transform(at, float(b[3]) + p * 7.0, Vector2.ONE)
-			burst.draw_rect(Rect2(-5, -3, 10, 6), Color(b[2], 1.0 - p))
+			burst.draw_rect(Rect2(-5, -3, 10, 6), Color(b[2], 1.0 - p * p))
 		burst.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE))
 	var fly := burst.create_tween()
 	fly.tween_method(func(value: float) -> void:
 		burst.set_meta("t", value)
-		burst.queue_redraw(), 0.0, 1.0, 0.75).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+		burst.queue_redraw(), 0.0, 1.0, 0.75 + 0.25 * (reach - 1.0)).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 	fly.tween_callback(burst.queue_free)
 
 
@@ -1250,6 +1267,7 @@ func start_day() -> void:
 	state.today_total = hand.size()
 	state.lapse_today = 0
 	state.today_perf = 0
+	state.today_log = []
 	game._career_write()
 	refresh()
 	var line := "%d일 차 출근! 업무 %d건 · 행동력 %d." % [day, hand.size(), int(state.ap)]
@@ -1427,6 +1445,9 @@ func _pick(kind: String) -> void:
 	(state.carry as Dictionary).erase(id)
 	state.done_count = int(state.done_count) + 1
 	state.today_done = int(state.today_done) + 1
+	var log: Array = state.get("today_log", [])
+	log.append({"title": c.title, "kind": "principled" if principled else kind})
+	state.today_log = log
 	_learn(str(c.get("term", "")))
 	var deltas := _delta_chips(gain, cost)
 	_paper_result(kind, stamp, headline, body, lesson, deltas, "확인", "c_after", int(combo_info[0]) if principled else 0, bool(combo_info[1]))
@@ -1538,20 +1559,123 @@ func _end_day() -> void:
 	var clean := int(state.lapse_today) == 0 and int(state.today_done) > 0
 	if clean:
 		state.desk.points = int(state.desk.points) + 50
-	var rows := "처리한 카드 [b]%d장[/b] · 오늘 실적 [b]%+d[/b]" % [int(state.today_done), int(state.today_perf)]
-	if carried > 0:
-		rows += "\n내일로 미룬 카드 [b]%d장[/b]%s" % [carried, " (업무 수첩 덕분에 하루 더 여유)" if limit > 1 else ""]
-	for id in late:
-		rows += "\n[color=#c2493d]기한 초과 · %s → 민원 접수, 실적 -1[/color]" % Career.card(id).title
-	rows += "\n도전 '타협 없이 퇴근' " + ("[color=#4f8f5c][b]성공! 복지포인트 +50P[/b][/color]" if clean else "[color=#8a918a]실패[/color]")
 	state.phase = "evening"
 	game._career_write()
 	refresh()
-	game.sound.play("success" if clean else "select")
+	_evening(day, carried, limit > 1, late, clean)
+
+
+## End-of-day summary: stars, a stamp for every card handled, and Dali's word.
+func _evening(day: int, carried: int, planner: bool, late: Array, clean: bool) -> void:
+	var stars := 1 + (1 if clean else 0) + (1 if carried == 0 and late.is_empty() else 0)
+	var v := _paper_open(MINT_DARK if day < 3 else NAVY, false)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 14)
+	v.add_child(head)
+	var face := DaliIcon.new()
+	face.custom_minimum_size = Vector2(64, 64)
+	head.add_child(face)
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", 4)
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(words)
+	var tags := HBoxContainer.new()
+	tags.add_child(UI.chip("%d일 차 퇴근" % day if day < 3 else "3일 차 퇴근 전", MINT_DARK if day < 3 else NAVY, Color.WHITE, 11))
+	words.add_child(tags)
+	words.add_child(UI.label("오늘도 수고했어요!" if day < 3 else "잠깐! %s님이 찾으세요" % _lead(), 24, UI.INK, true))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	head.add_child(row)
+	for i in 3:
+		var star := Control.new()
+		star.custom_minimum_size = Vector2(46, 46)
+		var on := i < stars
+		star.draw.connect(_draw_star.bind(star, on))
+		star.pivot_offset = Vector2(23, 23)
+		star.scale = Vector2.ZERO
+		row.add_child(star)
+		var pop := star.create_tween()
+		pop.tween_interval(0.35 + i * 0.28)
+		pop.tween_callback(func() -> void: game.sound.play("coin" if on else "move"))
+		pop.tween_property(star, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# One small stamp per card handled today.
+	var log: Array = state.get("today_log", [])
+	if not log.is_empty():
+		var stamps := HFlowContainer.new()
+		stamps.add_theme_constant_override("h_separation", 8)
+		stamps.add_theme_constant_override("v_separation", 8)
+		v.add_child(stamps)
+		var names := {"principled": "원칙", "quick": "빠름", "easy": "타협", "bonus": "선물"}
+		var colors := {"principled": KIND_COLOR.careful, "quick": KIND_COLOR.quick, "easy": KIND_COLOR.easy, "bonus": KIND_COLOR.bonus}
+		for i in log.size():
+			var e: Dictionary = log[i]
+			var k := str(e.kind)
+			var tile := PanelContainer.new()
+			tile.add_theme_stylebox_override("panel", UI.panel(Color("#ffffff"), Color("#e4dccb"), 10, 10, 1))
+			var h := HBoxContainer.new()
+			h.add_theme_constant_override("separation", 8)
+			tile.add_child(h)
+			var holder := _seal(names.get(k, "처리"), colors.get(k, UI.GOLD), 38, 11)
+			h.add_child(holder)
+			h.add_child(UI.label(str(e.title), 13, UI.INK, true))
+			(h.get_child(1) as Label).size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			stamps.add_child(tile)
+			if k == "easy":
+				var faded: Control = holder.get_child(0)
+				faded.create_tween().tween_property(faded, "modulate:a", 0.75, 0.3).set_delay(0.2 + i * 0.12)
+			else:
+				_slam(holder, colors.get(k, UI.GOLD), 0.2 + i * 0.12)
+	var facts := HFlowContainer.new()
+	facts.add_theme_constant_override("h_separation", 6)
+	facts.add_theme_constant_override("v_separation", 6)
+	v.add_child(facts)
+	facts.add_child(UI.chip("오늘 실적 %+d" % int(state.today_perf), Color("#e3f0e4"), UI.GREEN.darkened(0.2), 13))
+	facts.add_child(UI.chip("타협 없이 퇴근 · " + ("성공 +50P" if clean else "실패"), Color("#e3f0e4") if clean else Color("#efebe2"), UI.GREEN.darkened(0.2) if clean else UI.MUTED, 13))
+	if carried > 0:
+		facts.add_child(UI.chip("내일로 미룬 카드 %d장%s" % [carried, " (업무 수첩)" if planner else ""], Color("#f1e3c8"), Color("#8a5a1c"), 13))
+	for id in late:
+		facts.add_child(UI.chip("기한 초과 · %s · 실적 -1" % Career.card(id).title, Color("#f6e0dc"), UI.RED.darkened(0.15), 13))
+	var line: String = ["힘든 하루였죠? 내일은 원칙대로 차근차근!", "좋은 하루였어요. 내일은 별 세 개 가 봐요!", "완벽한 하루! 오늘 밤은 푹 자요."][stars - 1]
 	if day >= 3:
-		game.modal.open({"kicker": "3일 차 퇴근 전", "accent": NAVY, "title": "잠깐! 팀장님이 찾으세요", "body": rows + "\n\n이번 달의 [b]핵심 사건[/b]이에요. [b]팀장 자리[/b]로 가서 E를 눌러요.", "dismissable": false, "buttons": [{"label": "팀장 자리로 가기", "id": "c_boss_wait"}]})
+		line = "이번 달의 핵심 사건이에요. %s로 가서 E를 눌러요." % _lead_spot()
+	elif stars < 3:
+		line += " 푹 자면 체력이 1 회복돼요."
+	var said := UI.wrap(UI.label(line, 15, UI.INK_SOFT, true))
+	v.add_child(said)
+	face.react("happy" if stars == 3 else ("oops" if stars == 1 else ""))
+	_dali.react("happy" if stars == 3 else "")
+	say(line)
+	var foot := HBoxContainer.new()
+	v.add_child(foot)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(gap)
+	var next_id := "c_next_day" if day < 3 else "c_boss_wait"
+	var ok := Button.new()
+	ok.text = ("다음 날 출근하기" if day < 3 else "%s로 가기" % _lead_spot()) + "   Enter"
+	ok.focus_mode = Control.FOCUS_NONE
+	ok.custom_minimum_size = Vector2(0, 42)
+	UI.style_button(ok, true, MINT_DARK if day < 3 else NAVY)
+	ok.pressed.connect(_paper_choice.bind(next_id))
+	foot.add_child(ok)
+	_paper_ok = next_id
+	game.sound.play("success" if stars == 3 else "select")
+
+
+func _draw_star(c: Control, on: bool) -> void:
+	var o := c.size * 0.5
+	var pts := PackedVector2Array()
+	for i in 10:
+		var rad := 21.0 if i % 2 == 0 else 9.0
+		pts.append(o + Vector2.from_angle(-PI * 0.5 + i * PI / 5.0) * rad)
+	if on:
+		c.draw_colored_polygon(pts, Color("#f2b33d"))
+		pts.append(pts[0])
+		c.draw_polyline(pts, Color("#c98a1c"), 2.0, true)
 	else:
-		game.modal.open({"kicker": "%d일 차 퇴근" % day, "accent": MINT_DARK, "title": "오늘도 수고했어요!", "body": rows + "\n\n푹 자면 체력이 1 회복돼요.", "dismissable": false, "buttons": [{"label": "다음 날 출근하기", "id": "c_next_day"}]})
+		c.draw_colored_polygon(pts, Color("#ece6da"))
+		pts.append(pts[0])
+		c.draw_polyline(pts, Color("#d6ccb8"), 2.0, true)
 
 
 # --- Boss case ----------------------------------------------------------------------
@@ -1840,6 +1964,11 @@ func _show_appointment(grade: String, old_rank: int, old_salary: int) -> void:
 	var t := card.create_tween().set_parallel(true)
 	t.tween_property(card, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	t.tween_property(card, "modulate:a", 1.0, 0.2)
+	# The appointment is sealed with a slam and a shower of paper.
+	var seal := _seal("승진", Color("#c2493d"), 92, 20)
+	seal.position = card.position + Vector2(card.size.x - 118, 22)
+	_overlay.add_child(seal)
+	_slam(seal, Color("#c2493d"), 0.55, card, "combo", 3.2)
 
 
 func _after_appointment() -> void:
@@ -1884,53 +2013,25 @@ func _final() -> void:
 	game._save_profile()
 	game._career_write()
 	refresh()
+	# A near-opaque backdrop so nothing of the working office shows behind the certificate.
 	_overlay = ColorRect.new()
-	(_overlay as ColorRect).color = Color(0.05, 0.09, 0.1, 0.78)
+	(_overlay as ColorRect).color = Color(0.07, 0.13, 0.14, 1.0)
 	_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_overlay)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 12)
-	v.alignment = BoxContainer.ALIGNMENT_CENTER
-	v.position = Vector2(140, 70)
-	v.size = Vector2(1000, 600)
-	_overlay.add_child(v)
-	var kicker := UI.label("조달청 사원 키우기 · 엔딩 %d / %d" % [seen.size(), Career.ENDINGS.size()], 15, Color("#ffd9b8"), true)
-	kicker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(kicker)
-	var title := UI.label(ending.title, 52, Color("#fbf6ea"), true)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_color_override("font_outline_color", (ending.color as Color).darkened(0.4))
-	title.add_theme_constant_override("outline_size", 10)
-	v.add_child(title)
-	var sub := UI.label(ending.sub, 20, ending.color, true)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(sub)
-	var text := UI.wrap(UI.label("%s 주사의 3년. %s" % [state.name, ending.text], 16, Color("#dfe8e6")))
-	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	text.custom_minimum_size = Vector2(1000, 0)
-	v.add_child(text)
-	var journey := HBoxContainer.new()
-	journey.alignment = BoxContainer.ALIGNMENT_CENTER
-	journey.add_theme_constant_override("separation", 16)
-	v.add_child(journey)
-	for r in state.results:
-		var info: Dictionary = Career.EPISODES[int(r.ep)]
-		var p := PanelContainer.new()
-		p.add_theme_stylebox_override("panel", UI.panel(Color("#fffdf8"), Color("#d9cfbd"), 12, 14))
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 2)
-		p.add_child(col)
-		col.add_child(UI.label("%s · %s" % [info.code, info.title], 13, NAVY, true))
-		col.add_child(UI.label(info.topic, 11, UI.INK_SOFT))
-		col.add_child(UI.label("평가 %s · %s 승진" % [r.grade, Career.RANKS[int(r.ep) + 1].split(" ")[0]], 14, UI.ORANGE, true))
-		col.add_child(UI.wrap(UI.label("배움 · " + str(Career.card(info.boss).lesson), 11, UI.INK)))
-		p.custom_minimum_size = Vector2(300, 0)
-		col.custom_minimum_size = Vector2(272, 0)
-		journey.add_child(p)
-	var totals_l := UI.label("최종 %s · 연봉 %s만 원 · 청렴 %d · 오답 노트 %d장 · 모은 비품 %d / %d" % [Career.RANKS[int(state.rank)], _comma(int(state.salary)), int(state.integrity), int(state.notes), _owned_count(), Desk.ORDER.size()], 14, Color("#c9d6d4"), true)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 14)
+	root.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	root.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_overlay.add_child(root)
+	var paper := _certificate(ending)
+	paper.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	root.add_child(paper)
+	_slam(paper.get_meta("seal"), Color("#c2493d"), 0.6, paper, "combo", 3.5)
+	var totals_l := UI.label("엔딩 %d / %d 발견 · 청렴 %d · 오답 노트 %d장 · 모은 비품 %d / %d" % [seen.size(), Career.ENDINGS.size(), int(state.integrity), int(state.notes), _owned_count(), Desk.ORDER.size()], 13, Color("#c9d6d4"), true)
 	totals_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(totals_l)
+	root.add_child(totals_l)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 12)
@@ -1942,13 +2043,125 @@ func _final() -> void:
 		UI.style_button(btn, b[2], UI.ORANGE)
 		btn.pressed.connect(_final_action.bind(b[1]))
 		row.add_child(btn)
-	v.add_child(row)
+	root.add_child(row)
 	game.sound.play_music("ending" if ending.id != "relearn" else "ending_sad")
 	game.sound.play("success")
 	game.narami.play_action("cheer")
 	game.dali.play_action("cheer")
 	_overlay.modulate.a = 0.0
-	_overlay.create_tween().tween_property(_overlay, "modulate:a", 1.0, 0.6)
+	_overlay.create_tween().tween_property(_overlay, "modulate:a", 1.0, 0.5)
+	paper.pivot_offset = Vector2(420, 280)
+	paper.scale = Vector2(0.92, 0.92)
+	paper.create_tween().tween_property(paper, "scale", Vector2.ONE, 0.45).set_delay(0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## The ending as a course-completion certificate: who, final rank and title,
+## each episode's grade and the principle it taught; the seal is slammed by the caller.
+func _certificate(ending: Dictionary) -> Control:
+	var gold := Color("#c6963f")
+	var paper := PanelContainer.new()
+	var outer := UI.shadow_panel(Color("#fffaf0"), gold, 6, 10)
+	outer.set_border_width_all(3)
+	paper.add_theme_stylebox_override("panel", outer)
+	paper.custom_minimum_size = Vector2(840, 0)
+	var inner := PanelContainer.new()
+	var ist := UI.panel(Color("#fffaf0"), Color(gold, 0.55), 4, 22, 1)
+	ist.content_margin_top = 16
+	ist.content_margin_bottom = 16
+	inner.add_theme_stylebox_override("panel", ist)
+	paper.add_child(inner)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	inner.add_child(v)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	v.add_child(top)
+	var emblem := TextureRect.new()
+	emblem.texture = load("res://assets/brand/pps_emblem.png")
+	emblem.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	emblem.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	emblem.custom_minimum_size = Vector2(22, 22)
+	top.add_child(emblem)
+	top.add_child(UI.label("낙찰! 조달청 사원 키우기 교육과정", 12, UI.INK_SOFT, true))
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(gap)
+	top.add_child(UI.label("제 %d-%04d 호" % [Time.get_date_dict_from_system().year, int(state.seed) % 10000], 12, UI.INK_SOFT, true))
+	var title := UI.label("수  료  증", 40, NAVY, true)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(title)
+	# Who: name, final rank and the earned title.
+	var who := HBoxContainer.new()
+	who.alignment = BoxContainer.ALIGNMENT_CENTER
+	who.add_theme_constant_override("separation", 34)
+	v.add_child(who)
+	for f in [["성명", str(state.name), UI.INK], ["최종 직급", Career.RANKS[int(state.rank)], UI.INK], ["칭호", str(ending.title), ending.color]]:
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 0)
+		var k := UI.label(f[0], 11, UI.MUTED, true)
+		k.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(k)
+		var val := UI.label(f[1], 22, f[2], true)
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(val)
+		who.add_child(col)
+	var body := UI.wrap(UI.label("위 사람은 공정 · 투명 · 청렴의 원칙으로 조달 업무를 모두 수행하여\n이 과정을 수료하였기에 이 증서를 드립니다.", 15, UI.INK, false))
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.custom_minimum_size = Vector2(640, 0)
+	body.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(body)
+	var sub := UI.wrap(UI.label("“%s” %s" % [ending.sub, ending.text], 12, UI.INK_SOFT, true))
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.custom_minimum_size = Vector2(660, 0)
+	sub.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(sub)
+	# Each episode: grade and the principle it taught.
+	var eps := HBoxContainer.new()
+	eps.alignment = BoxContainer.ALIGNMENT_CENTER
+	eps.add_theme_constant_override("separation", 10)
+	v.add_child(eps)
+	for r in state.results:
+		var info: Dictionary = Career.EPISODES[int(r.ep)]
+		var cell := PanelContainer.new()
+		cell.add_theme_stylebox_override("panel", UI.panel(Color("#fbf3df"), Color("#ecd9ae"), 8, 10))
+		cell.custom_minimum_size = Vector2(252, 0)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 2)
+		cell.add_child(col)
+		var line := HBoxContainer.new()
+		line.add_child(UI.label("%s · %s" % [info.code, info.title], 12, NAVY, true))
+		var g := Control.new()
+		g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.add_child(g)
+		line.add_child(UI.label(str(r.grade), 18, {"S": UI.GOLD, "A": UI.GREEN, "B": UI.BLUE, "C": UI.MUTED}.get(str(r.grade), UI.INK), true))
+		col.add_child(line)
+		var lesson := UI.wrap(UI.label(str(Career.card(info.boss).lesson), 11, UI.INK_SOFT, true))
+		lesson.custom_minimum_size = Vector2(230, 0)
+		col.add_child(lesson)
+		eps.add_child(cell)
+	# Date and issuer, with the seal slammed beside them.
+	var foot := HBoxContainer.new()
+	foot.alignment = BoxContainer.ALIGNMENT_CENTER
+	foot.add_theme_constant_override("separation", 16)
+	v.add_child(foot)
+	var d := Time.get_date_dict_from_system()
+	var sign := VBoxContainer.new()
+	sign.add_theme_constant_override("separation", 0)
+	var date := UI.label("%d년 %d월 %d일" % [d.year, d.month, d.day], 14, UI.INK, true)
+	date.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sign.add_child(date)
+	var issuer := UI.label("낙찰! 교육과정 운영팀", 18, NAVY, true)
+	issuer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sign.add_child(issuer)
+	sign.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	foot.add_child(sign)
+	var seal := _seal("수료", Color("#c2493d"), 70, 18)
+	foot.add_child(seal)
+	paper.set_meta("seal", seal)
+	var note := UI.label("※ 게임 속 가상 증서이며 실제 자격과는 관계없어요.", 10, UI.MUTED)
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(note)
+	return paper
 
 
 func _final_action(what: String) -> void:
@@ -1990,15 +2203,17 @@ func _on_choice(id: String, _option: Dictionary) -> void:
 				_open_card(_active)
 			"c_next_day":
 				game.modal.close()
+				_paper_close()
 				state.day = int(state.day) + 1
 				start_day()
 			"c_boss": _boss(0)
 			"c_boss_wait":
 				game.modal.close()
+				_paper_close()
 				state.phase = "boss_wait"
 				game._career_write()
 				refresh()
-				say("팀장님 자리로 가서 E를 눌러요.")
+				say("%s로 가서 E를 눌러요." % _lead_spot())
 			"c_boss_next": _boss(_boss_step + 1)
 			"c_audit": _audit()
 			"c_quiz": _quiz_start()
@@ -2019,7 +2234,7 @@ func resume() -> void:
 		"boss", "boss_wait":
 			state.phase = "boss_wait"
 			refresh()
-			say("이어서 해요! 팀장님 자리로 가서 E를 눌러요.")
+			say("이어서 해요! %s로 가서 E를 눌러요." % _lead_spot())
 		"audit": _audit()
 		"promotion": _after_appointment()
 		"final": _final()
@@ -2031,7 +2246,7 @@ func _end_day_resume() -> void:
 	if int(state.day) >= 3:
 		state.phase = "boss_wait"
 		refresh()
-		say("팀장님 자리로 가서 E를 눌러요.")
+		say("%s로 가서 E를 눌러요." % _lead_spot())
 	else:
 		state.day = int(state.day) + 1
 		start_day()
@@ -2070,6 +2285,15 @@ func _hint_row(parts: Array) -> Control:
 			l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			h.add_child(l)
 	return p
+
+
+## This episode's lead ("박 팀장", "한 과장", …) and where they sit.
+func _lead() -> String:
+	return str(Career.EPISODES[clampi(int(state.ep), 1, 3)].lead)
+
+
+func _lead_spot() -> String:
+	return "%s 자리" % _lead()
 
 
 func _lead_talk() -> void:

@@ -15,6 +15,10 @@ const WALL_H := 2.2
 static var office_dept := "구매사업국 · 물품구매과"
 static var office_name := ""
 static var office_items: Array = []
+## Which episode's place to dress the office as: 1 office, 2 mall operations, 3 inspection floor.
+## The walkable layout and work spots stay the same, so every card still has its spot.
+static var office_theme := 1
+static var office_lead := "박 팀장"
 
 
 static func build(room: String, root: Node3D) -> Dictionary:
@@ -566,29 +570,52 @@ static func _title(root: Node3D) -> Dictionary:
 
 static func _pps_office(root: Node3D) -> Dictionary:
 	var size := Vector2(8.0, 6.0)
-	_shell(root, size, Props.surface_mat("oak_wood_planks", Color("#d9cbb6"), 2.0, 0.7), Color("#d7dcdc"), Color("#3f5566"), Color("#2c3e4c"))
-	_room_sign(root, size, "조달청 · " + office_dept, Color("#24435a"), 0.5)
+	var theme := office_theme
+	match theme:
+		2: _shell(root, size, Props.textured_mat(Props.tile_texture(Color("#c9c4b8"), Color("#a29c8f")), Vector2(4.0, 3.0), Color.WHITE, 0.45), Color("#d8e0e4"), Color("#2f6f80"), Color("#22505c"))
+		3: _shell(root, size, Props.textured_mat(Props.tile_texture(Color("#a7aaa3"), Color("#7f837c")), Vector2(2.7, 2.0), Color.WHITE, 0.55), Color("#d9d4c6"), Color("#6c7a5e"), Color("#4a5642"))
+		_: _shell(root, size, Props.surface_mat("oak_wood_planks", Color("#d9cbb6"), 2.0, 0.7), Color("#d7dcdc"), Color("#3f5566"), Color("#2c3e4c"))
+	var plate_color: Color = [Color("#24435a"), Color("#1f4f5c"), Color("#3d5236")][clampi(theme, 1, 3) - 1]
+	_room_sign(root, size, ("조달청 · " if theme != 3 else "납품 현장 · ") + office_dept, plate_color, 0.5)
 	var emblem := Sprite3D.new()
 	emblem.texture = load("res://assets/brand/pps_emblem.png")
 	emblem.pixel_size = 0.00084
 	emblem.shaded = false
 	emblem.position = Vector3(-1.75, 1.86, -size.y * 0.5 + 0.03)
 	root.add_child(emblem)
-	Props.wall_board(root, Vector3(2.85, 1.25, -2.95), Vector2(1.6, 1.0), Color("#24435a"), Color("#eef1f2"), "우리 과 약속", "공정 · 투명 · 청렴\n세금은 아껴 씁니다", Color("#24435a"))
-	Props.wall_board(root, Vector3(-3.0, 1.25, -2.95), Vector2(1.4, 1.0), Color("#7a5a3c"), Color("#f6efdc"), "이달의 일정", "공고 · 개찰 · 심사\n금요일 감사 주간", Color("#c4643b"))
+	match theme:
+		2:
+			Props.wall_board(root, Vector3(2.85, 1.25, -2.95), Vector2(1.6, 1.0), Color("#1f4f5c"), Color("#eef1f2"), "쇼핑몰 원칙", "같은 상품 · 같은 가격\n선물은 정중히 거절", Color("#1f4f5c"))
+			_price_wall(root, Vector3(-0.15, 1.12, -2.96))
+		3:
+			Props.wall_board(root, Vector3(-3.0, 1.25, -2.95), Vector2(1.4, 1.0), Color("#4a5642"), Color("#f4f3ec"), "납품 일정표", "회의용 탁자 50개\n납기 D-10 · 검수 후 지급", Color("#3d5236"))
+			_loading_door(root, Vector3(2.75, 0, -2.97))
+		_:
+			Props.wall_board(root, Vector3(2.85, 1.25, -2.95), Vector2(1.6, 1.0), Color("#24435a"), Color("#eef1f2"), "우리 과 약속", "공정 · 투명 · 청렴\n세금은 아껴 씁니다", Color("#24435a"))
+			Props.wall_board(root, Vector3(-3.0, 1.25, -2.95), Vector2(1.4, 1.0), Color("#7a5a3c"), Color("#f6efdc"), "이달의 일정", "공고 · 개찰 · 심사\n금요일 감사 주간", Color("#c4643b"))
 	# Team lead at the back, colleague on the left.
 	Props.desk(root, Vector3(0.6, 0, -1.9), 1.7, 0.8, Color("#a7825c"))
 	Props.monitor(root, Vector3(1.05, 0.72, -1.95), Color("#4b7896"), "", PI + 0.3)
 	Props.document(root, Vector3(0.25, 0.73, -1.8), Vector2(0.36, 0.26), Color("#24435a"), "", 0.2, 3)
-	var lead := _npc(root, "팀장", Vector3(0.6, 0, -2.5), Color("#2f4f6a"), Color("#3a3330"), 0.0, Color("#e0c46a"))
+	var lead_look: Array = [[Color("#2f4f6a"), Color("#3a3330"), Color("#e0c46a")], [Color("#3c6f6a"), Color("#2a2420"), Color("#e07a35")], [Color("#5e6f8a"), Color("#4a3b30"), Color("#e2b43c")]][clampi(theme, 1, 3) - 1]
+	var lead := _npc(root, office_lead.split(" ")[-1], Vector3(0.6, 0, -2.5), lead_look[0], lead_look[1], 0.0, lead_look[2])
 	Props.desk(root, Vector3(-2.55, 0, -1.3), 1.5, 0.8, Color("#b38c63"))
 	Props.monitor(root, Vector3(-2.3, 0.72, -1.4), Color("#6fa0b8"), "", PI - 0.4)
 	var peer := _npc(root, "최 주무관", Vector3(-2.55, 0, -1.95), Color("#6b7d5a"), Color("#231f1d"), 0.0, Color("#d8b25a"))
-	for i in range(3):
-		_deco(root, "bookcaseClosedDoors", Vector3(3.72, 0, -1.4 + i * 0.8), -PI * 0.5)
-	Props.add_collider(root, Vector3(3.72, 0, -0.6), Vector3(0.5, 1.0, 2.4))
-	Props.model(root, "sideTableDrawers", Vector3(-3.7, 0, 0.6), PI * 0.5)
-	_deco(root, "kitchenCoffeeMachine", Vector3(-3.7, 0.74, 0.5), PI * 0.5)
+	# Right wall and the left nook change with the place.
+	match theme:
+		2:
+			_product_stands(root)
+			Props.model(root, "sideTableDrawers", Vector3(-3.7, 0, 0.6), PI * 0.5)
+			_deco(root, "kitchenCoffeeMachine", Vector3(-3.7, 0.74, 0.5), PI * 0.5)
+		3:
+			_carton_stacks(root)
+		_:
+			for i in range(3):
+				_deco(root, "bookcaseClosedDoors", Vector3(3.72, 0, -1.4 + i * 0.8), -PI * 0.5)
+			Props.add_collider(root, Vector3(3.72, 0, -0.6), Vector3(0.5, 1.0, 2.4))
+			Props.model(root, "sideTableDrawers", Vector3(-3.7, 0, 0.6), PI * 0.5)
+			_deco(root, "kitchenCoffeeMachine", Vector3(-3.7, 0.74, 0.5), PI * 0.5)
 	Props.model(root, "pottedPlant", Vector3(-3.55, 0, -2.45))
 	_deco(root, "trashcan", Vector3(2.05, 0, -0.55))
 	# Civil-complaint counter (front left): phone, sign and a visitor's side.
@@ -598,7 +625,8 @@ static func _pps_office(root: Node3D) -> Dictionary:
 	Props.box(root, counter + Vector3(0.05, 1.04, -0.25), Vector3(0.22, 0.06, 0.16), Props.mat(Color("#2b2f33"), 0.5))
 	Props.box(root, counter + Vector3(0.05, 1.09, -0.25), Vector3(0.24, 0.04, 0.06), Props.mat(Color("#2b2f33"), 0.5))
 	Props.document(root, counter + Vector3(0.05, 1.01, 0.2), Vector2(0.24, 0.3), Color("#e07a35"), "", 0.1, 2)
-	var csign := Props.label(root, "민원 창구", counter + Vector3(0.37, 0.62, 0), 30, Color("#3f5566"))
+	var counter_name: String = ["민원 창구", "구매 문의 창구", "검수 접수대"][clampi(theme, 1, 3) - 1]
+	var csign := Props.label(root, counter_name, counter + Vector3(0.37, 0.62, 0), 30, Color("#3f5566"))
 	csign.rotation.y = PI * 0.5
 	# Reception table (front right) where visiting companies sit.
 	var visit := Vector3(2.8, 0, 1.25)
@@ -616,7 +644,15 @@ static func _pps_office(root: Node3D) -> Dictionary:
 	Props.box(root, door + Vector3(-0.04, 1.68, 0), Vector3(0.03, 0.14, 0.42), Props.glow_mat(Color("#3fa36b"), 0.8))
 	var exit_label := Props.label(root, "출입구", door + Vector3(-0.06, 1.68, 0), 26, Color.WHITE)
 	exit_label.rotation.y = -PI * 0.5
-	_rug(root, Vector3(-0.2, 0, 0.75), Vector2(3.2, 2.0), Color("#3f5566"), Color("#c9a24c"))
+	match theme:
+		2: _rug(root, Vector3(-0.2, 0, 0.75), Vector2(3.2, 2.0), Color("#2f5e78"), Color("#1f3d52"))
+		3:
+			_rug(root, Vector3(-0.2, 0, 0.75), Vector2(3.2, 2.0), Color("#5c6b55"), Color("#e2b43c"))
+			# Safety lines marking the lane in from the loading door.
+			var stripe := Props.mat(Color("#e2b43c"), 0.7)
+			for z in [-0.35, 0.35]:
+				Props.box(root, Vector3(2.75, 0.008, -2.0 + z), Vector3(0.06, 0.012, 1.6), stripe)
+		_: _rug(root, Vector3(-0.2, 0, 0.75), Vector2(3.2, 2.0), Color("#3f5566"), Color("#c9a24c"))
 	# The player's desk faces the camera so what they have earned is on show.
 	var desk_pos := Vector3(-0.2, 0, 1.05)
 	Props.desk(root, desk_pos, 1.9, 0.8, Color("#c9a77c"))
@@ -651,13 +687,76 @@ static func _pps_office(root: Node3D) -> Dictionary:
 		# and where a visitor waits (position, facing).
 		"spots": {
 			"desk": {"name": "내 자리", "stand": desk_pos + Vector3(1.25, 0, 0.05), "anchor": desk_pos + Vector3(-0.2, 1.45, -0.1)},
-			"counter": {"name": "민원 창구", "stand": counter + Vector3(0.75, 0, 0), "anchor": counter + Vector3(0, 1.55, 0), "visitor": [counter + Vector3(-0.65, 0, 0), PI * 0.5]},
-			"visit": {"name": "응접 테이블", "stand": visit + Vector3(-0.75, 0, 0), "anchor": visit + Vector3(0, 1.4, 0), "visitor": [visit + Vector3(0.75, 0, 0), -PI * 0.5]},
-			"door": {"name": "출입구", "stand": door + Vector3(-0.6, 0, 0), "anchor": door + Vector3(-0.2, 1.95, 0)},
+			"counter": {"name": counter_name, "stand": counter + Vector3(0.75, 0, 0), "anchor": counter + Vector3(0, 1.55, 0), "visitor": [counter + Vector3(-0.65, 0, 0), PI * 0.5]},
+			"visit": {"name": "응접 테이블" if theme == 1 else "업체 상담석", "stand": visit + Vector3(-0.75, 0, 0), "anchor": visit + Vector3(0, 1.4, 0), "visitor": [visit + Vector3(0.75, 0, 0), -PI * 0.5]},
+			"door": {"name": "출입구" if theme != 3 else "현장 출입구", "stand": door + Vector3(-0.6, 0, 0), "anchor": door + Vector3(-0.2, 1.95, 0)},
 			"peer": {"name": "최 주무관 자리", "stand": Vector3(-2.55, 0, -0.5), "anchor": Vector3(-2.55, 1.3, -0.95)},
-			"lead": {"name": "팀장 자리", "stand": Vector3(0.6, 0, -1.05), "anchor": Vector3(0.6, 1.35, -1.55)},
+			"lead": {"name": "%s 자리" % office_lead, "stand": Vector3(0.6, 0, -1.05), "anchor": Vector3(0.6, 1.35, -1.55)},
 		},
 	}
+
+
+## EP2: the mall's live price board on the back wall.
+static func _price_wall(root: Node3D, at: Vector3) -> void:
+	Props.box(root, at, Vector3(2.3, 1.0, 0.05), Props.mat(Color("#25313a"), 0.6))
+	Props.box(root, at + Vector3(0, 0, 0.03), Vector3(2.18, 0.88, 0.01), Props.glow_mat(Color("#1f5f7a"), 0.35))
+	var heading := Props.label(root, "종합쇼핑몰 가격 모니터", at + Vector3(0, 0.33, 0.04), 26, Color("#ffffff"))
+	heading.pixel_size = 0.0034
+	for i in range(7):
+		var h: float = [0.22, 0.3, 0.26, 0.34, 0.28, 0.18, 0.4][i]
+		var hot := i == 6
+		Props.box(root, at + Vector3(-0.85 + i * 0.28, -0.38 + h * 0.5, 0.04), Vector3(0.16, h, 0.01), Props.glow_mat(Color("#f2b14c") if hot else Color("#8fd0e8"), 0.6))
+	var warn := Props.label(root, "가격 급변 !", at + Vector3(0.85, 0.12, 0.04), 20, Color("#f2b14c"))
+	warn.pixel_size = 0.003
+
+
+## EP2: product display stands along the right wall, each with a sample table and tag.
+static func _product_stands(root: Node3D) -> void:
+	var stands := [["대성오피스", Color("#4f9a62"), -1.55], ["새길가구", Color("#4a86c0"), -0.1]]
+	for st in stands:
+		var z: float = st[2]
+		Props.rounded_box(root, Vector3(3.55, 0.12, z), Vector3(0.8, 0.24, 1.2), Props.mat(Color("#ebe6dc"), 0.5), true)
+		Props.box(root, Vector3(3.14, 0.16, z), Vector3(0.01, 0.08, 1.2), Props.mat(st[1], 0.6))
+		var wood := Props.surface_mat("oak_wood_planks", Color("#d9b48a"), 0.6, 0.6)
+		_deco(root, "table", Vector3(3.6, 0.24, z), PI * 0.5, 0.95, {"wood": wood, "woodDark": wood, "_defaultMat": wood})
+		Props.box(root, Vector3(3.95, 1.25, z), Vector3(0.04, 0.5, 1.0), Props.mat(Color("#25313a"), 0.6))
+		var tag := Props.label(root, "%s\n회의 탁자" % st[0], Vector3(3.92, 1.25, z), 24, Color("#ffffff"))
+		tag.pixel_size = 0.0034
+		tag.rotation.y = -PI * 0.5
+	Props.add_collider(root, Vector3(3.55, 0, -0.85), Vector3(0.85, 1.0, 2.8))
+	# Win-win sale banner by the colleague's desk.
+	Props.box(root, Vector3(-3.6, 0.02, -0.25), Vector3(0.4, 0.04, 0.3), Props.mat(Color("#3b4a54"), 0.6))
+	Props.box(root, Vector3(-3.6, 0.7, -0.25), Vector3(0.04, 1.4, 0.04), Props.mat(Color("#3b4a54"), 0.6))
+	Props.box(root, Vector3(-3.58, 1.0, -0.25), Vector3(0.02, 0.7, 0.5), Props.mat(Color("#d9534a"), 0.7))
+	var sale := Props.label(root, "상생\n세일", Vector3(-3.56, 1.02, -0.25), 30, Color("#ffffff"))
+	sale.rotation.y = PI * 0.5
+	sale.pixel_size = 0.0036
+
+
+## EP3: the roll-up loading door the tables come in through.
+static func _loading_door(root: Node3D, at: Vector3) -> void:
+	Props.box(root, at + Vector3(0, 0.95, 0), Vector3(1.8, 1.9, 0.04), Props.mat(Color("#8c9294"), 0.5, 0.3))
+	for i in range(9):
+		Props.box(root, at + Vector3(0, 0.12 + i * 0.2, 0.025), Vector3(1.76, 0.02, 0.02), Props.mat(Color("#6f7577"), 0.5, 0.3))
+	Props.box(root, at + Vector3(0, 1.95, 0.03), Vector3(2.0, 0.12, 0.08), Props.mat(Color("#3a4248"), 0.6))
+	var l := Props.label(root, "반입구", at + Vector3(0, 2.07, 0.08), 22, Color("#3a4248"))
+	l.pixel_size = 0.0032
+
+
+## EP3: delivered cartons along the right wall and a pallet truck in the left nook.
+static func _carton_stacks(root: Node3D) -> void:
+	for i in range(3):
+		for j in range(2):
+			_deco(root, "cardboardBoxClosed", Vector3(3.6, j * 0.42, -1.75 + i * 0.6), 0.1 * (i - 1), 2.4)
+	_deco(root, "cardboardBoxOpen", Vector3(3.55, 0, 0.35), 0.3, 2.4)
+	Props.add_collider(root, Vector3(3.6, 0, -0.9), Vector3(0.7, 1.0, 2.8))
+	var tag := Props.label(root, "검수 대기 · 회의용 탁자", Vector3(3.95, 1.2, -1.15), 22, Color("#3d5236"))
+	tag.rotation.y = -PI * 0.5
+	tag.pixel_size = 0.0034
+	Props.box(root, Vector3(-3.55, 0.08, 0.6), Vector3(0.6, 0.06, 1.0), Props.mat(Color("#c94f3f"), 0.5, 0.3))
+	Props.box(root, Vector3(-3.55, 0.5, 1.15), Vector3(0.06, 0.9, 0.06), Props.mat(Color("#2a2a2c"), 0.5))
+	_deco(root, "cardboardBoxClosed", Vector3(-3.55, 0.11, 0.55), 0.2, 2.4)
+	Props.add_collider(root, Vector3(-3.55, 0, 0.7), Vector3(0.7, 1.0, 1.1))
 
 
 ## Unity-rendered item icon standing on the desk, always facing the camera.

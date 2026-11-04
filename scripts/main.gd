@@ -2780,6 +2780,8 @@ func _career_open(fresh: bool) -> void:
 func _career_stage() -> void:
 	var info: Dictionary = Career.EPISODES[clampi(int(career.ep), 1, 3)]
 	RoomBuilder.office_dept = info.dept
+	RoomBuilder.office_theme = clampi(int(career.ep), 1, 3)
+	RoomBuilder.office_lead = str(info.lead)
 	RoomBuilder.office_name = "%s  %s" % [Career.RANKS[int(career.rank)].split(" ")[0], career.name]
 	var items := []
 	for id in Desk.ORDER:
@@ -2802,7 +2804,7 @@ func _career_stage() -> void:
 	cine_cam.h_offset = 1.0
 	cine_cam.v_offset = -0.25
 	cine_cam.current = true
-	sound.play_music("pps_office")
+	sound.play_music(["pps_office", "showroom", "warehouse"][RoomBuilder.office_theme - 1])
 
 
 func _career_home() -> void:
