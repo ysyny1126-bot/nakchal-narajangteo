@@ -145,7 +145,9 @@ func _career_shots() -> void:
 	cs._on_choice("c_boss_next", {})
 	cs._on_choice("c_boss_pick:careful", {})
 	cs._on_choice("c_audit", {})
-	await _wait(20)
+	await _wait(70)
+	await _shot("career_08a_audit_flipping")
+	await _seconds(4.0)
 	await _shot("career_08_audit")
 	cs._on_choice("c_quiz", {})
 	for i in range(3):

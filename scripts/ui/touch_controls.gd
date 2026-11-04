@@ -41,7 +41,7 @@ func _ready() -> void:
 	var terms := _round_button("용어", Vector2(110, 40), false)
 	terms.pressed.connect(func() -> void: terms_pressed.emit())
 	col.add_child(terms)
-	var act := _round_button("조사 · E", Vector2(110, 86), true)
+	var act := _round_button("업무 열기", Vector2(110, 86), true)
 	act.pressed.connect(func() -> void: interact_pressed.emit())
 	col.add_child(act)
 

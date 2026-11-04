@@ -143,7 +143,10 @@ func build(has_save: bool, save_text: String, record: String) -> void:
 	row.add_child(_start)
 	row.position = Vector2(COL_X, 490)
 	_centred(row)
-	_hint = _outlined("Enter 이어하기 · 1 새 게임 · 3 설정 · 4 도감 · 5 내 책상" if has_save else "Enter 또는 버튼을 눌러 시작", 14, Color("#ffffff"), Color("#1c3540"), 5)
+	var hint_text := "Enter 이어하기 · 1 새 게임 · 3 설정 · 4 도감 · 5 내 책상" if has_save else "Enter 또는 버튼을 눌러 시작"
+	if DisplayServer.is_touchscreen_available():
+		hint_text = "버튼을 눌러 시작해요 · 가로 화면 추천"
+	_hint = _outlined(hint_text, 14, Color("#ffffff"), Color("#1c3540"), 5)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	# Bottom bar: chapters (left) and records/version (right)
 	var chapters := HBoxContainer.new()

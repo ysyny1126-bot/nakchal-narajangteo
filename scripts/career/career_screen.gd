@@ -764,6 +764,10 @@ func _paper_open(accent: Color, closable: bool = true) -> VBoxContainer:
 	_paper.position = Vector2(0, 48)
 	_paper.size = Vector2(PANEL_X - 8, 672)
 	_paper.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Tapping the dimmed office around a closable card puts it down (phones have no Esc).
+	_paper.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.pressed and _paper_close_ok:
+			_paper_choice("close"))
 	add_child(_paper)
 	_paper_card = PanelContainer.new()
 	var st := UI.shadow_panel(Color("#fffdf6"), accent, 18, 22)
@@ -856,7 +860,7 @@ func _paper_head(v: VBoxContainer, type: String, title: String, org: String, ris
 		head.add_child(r)
 	if _paper_close_ok:
 		var esc := VBoxContainer.new()
-		esc.add_child(UI.keycap("Esc"))
+		esc.add_child(_close_button())
 		head.add_child(esc)
 
 
@@ -1170,7 +1174,7 @@ func _pick_paper(spot: String, ids: Array) -> void:
 	var title := UI.label("%s · 업무 %d건" % [game.layout.spots[spot].name, ids.size()], 20, UI.INK, true)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
-	head.add_child(UI.keycap("Esc"))
+	head.add_child(_close_button())
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	v.add_child(row)
@@ -1744,7 +1748,8 @@ func _audit() -> void:
 	state.phase = "audit"
 	state.audited = true
 	refresh()
-	var custom: VBoxContainer = game.modal.open({"kicker": "금요일 · 감사 주간", "accent": NAVY, "title": "이번 달 업무를 점검합니다", "body": "'빠르게' 처리한 카드와 '편하게' 처리한 일을 감사관이 한 장씩 확인해요.", "dismissable": false, "width": 640})
+	# Work out the whole audit first; the cards then turn over one by one.
+	var entries := []
 	var mistakes := 0
 	var perf := 0
 	for q in state.quick_log:
@@ -1754,46 +1759,132 @@ func _audit() -> void:
 		if bool(q.mistake):
 			mistakes += 1
 			perf -= 3
-			custom.add_child(_audit_row(false, c.title, "%s → 오답 노트에 정리 (실적 -3)" % c.quick[1]))
+			entries.append({"ok": false, "title": c.title, "tag": "실수 · 실적 -3", "why": str(c.quick[1])})
 		else:
-			custom.add_child(_audit_row(true, c.title, "빠르게 처리했지만 이상 없음"))
+			entries.append({"ok": true, "title": c.title, "tag": "빠르게 · 이상 없음"})
 	for l in state.lapses:
 		perf -= 2
-		custom.add_child(_audit_row(false, Career.card(str(l.id)).title, "청렴 지적 · %s (실적 -2)" % l.text))
+		entries.append({"ok": false, "title": Career.card(str(l.id)).title, "tag": "청렴 지적 · 실적 -2", "why": str(l.text)})
 	var clean := mistakes == 0 and (state.lapses as Array).is_empty()
-	if (state.quick_log as Array).is_empty() and (state.lapses as Array).is_empty():
-		custom.add_child(UI.label("빠르게·편하게 처리한 일이 없어 점검할 게 없어요.", 13, UI.INK_SOFT, true))
 	if clean:
 		perf += 3
-		custom.add_child(UI.wrap(UI.label("깨끗한 감사! 실적 +3. 꼼꼼함이 몸에 익어 '돋보기' 스킬을 얻었어요.", 14, UI.GREEN.darkened(0.2), true)))
 		_earn("magnifier")
 	state.notes = int(state.notes) + mistakes
 	state.ep_mistakes = mistakes
 	state.total_mistakes = int(state.total_mistakes) + mistakes
 	state.perf = maxi(0, int(state.perf) + perf)
 	state.ep_perf = int(state.ep_perf) + perf
-	if int(state.notes) >= 3 and _earn("highlighter"):
-		custom.add_child(UI.wrap(UI.label("오답 노트가 %d장 모였어요. 함정을 알아보는 눈이 생겨 '형광펜' 스킬을 얻었어요." % int(state.notes), 13, UI.BLUE, true)))
-	game.modal.add_deltas([{"label": "실적", "value": "%+d" % perf, "good": perf >= 0}, {"label": "오답 노트", "value": "+%d" % mistakes, "good": mistakes == 0}])
-	game.modal.add_buttons([{"label": "용어 퀴즈로 마무리", "id": "c_quiz"}])
-	game.sound.play("success" if clean else "fail")
-	if clean:
-		game.narami.play_action("cheer")
-		game.dali.play_action("cheer")
-	else:
-		game.narami.play_action("sad")
-	say("감사 주간이에요. 실수는 오답 노트가 되고, 오답 노트는 실력이 돼요.")
+	var highlighter := int(state.notes) >= 3 and _earn("highlighter")
 	game._career_write()
+	var v := _paper_open(NAVY, false)
+	var tags := HBoxContainer.new()
+	tags.add_child(UI.chip("금요일 · 감사 주간", NAVY, Color.WHITE, 11))
+	v.add_child(tags)
+	v.add_child(UI.label("감사관이 한 장씩 확인해요", 24, UI.INK, true))
+	v.add_child(UI.label("'빠르게' 넘긴 일과 '편하게' 처리한 일이 뒤집혀요.", 13, UI.INK_SOFT, true))
+	say("두근두근… 감사관이 카드를 넘기고 있어요.")
+	var grid := HFlowContainer.new()
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	v.add_child(grid)
+	var after := VBoxContainer.new()
+	after.add_theme_constant_override("separation", 8)
+	after.modulate.a = 0.0
+	v.add_child(after)
+	if entries.is_empty():
+		after.add_child(UI.label("빠르게·편하게 처리한 일이 없어 점검할 게 없어요.", 14, UI.INK_SOFT, true))
+	var flips := grid.create_tween()
+	flips.tween_interval(0.5)
+	for e in entries:
+		var card := _audit_back()
+		grid.add_child(card)
+		flips.tween_property(card, "scale:x", 0.0, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		flips.tween_callback(_audit_front.bind(card, e))
+		flips.tween_property(card, "scale:x", 1.0, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		flips.tween_interval(0.45)
+	flips.tween_callback(func() -> void:
+		for e in entries:
+			if not e.ok:
+				var why := UI.wrap(UI.label("• %s — %s" % [e.title, e.why], 12, UI.RED.darkened(0.25), true))
+				why.custom_minimum_size = Vector2(600, 0)
+				after.add_child(why)
+		if clean:
+			after.add_child(UI.wrap(UI.label("깨끗한 감사! 실적 +3. 꼼꼼함이 몸에 익어 '돋보기' 스킬을 얻었어요.", 14, UI.GREEN.darkened(0.2), true)))
+		if highlighter:
+			after.add_child(UI.wrap(UI.label("오답 노트가 %d장 모였어요. 함정을 알아보는 눈이 생겨 '형광펜' 스킬을 얻었어요." % int(state.notes), 13, UI.BLUE, true)))
+		var foot := HBoxContainer.new()
+		foot.add_theme_constant_override("separation", 6)
+		foot.add_child(UI.chip("실적 %+d" % perf, Color("#e3f0e4") if perf >= 0 else Color("#f6e0dc"), UI.GREEN.darkened(0.2) if perf >= 0 else UI.RED.darkened(0.15), 13))
+		foot.add_child(UI.chip("오답 노트 +%d" % mistakes, Color("#e3f0e4") if mistakes == 0 else Color("#f6e0dc"), UI.GREEN.darkened(0.2) if mistakes == 0 else UI.RED.darkened(0.15), 13))
+		var gap := Control.new()
+		gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		foot.add_child(gap)
+		var ok := Button.new()
+		ok.text = "용어 퀴즈로 마무리   Enter"
+		ok.focus_mode = Control.FOCUS_NONE
+		ok.custom_minimum_size = Vector2(0, 42)
+		UI.style_button(ok, true, NAVY)
+		ok.pressed.connect(_paper_choice.bind("c_quiz"))
+		foot.add_child(ok)
+		after.add_child(foot)
+		after.create_tween().tween_property(after, "modulate:a", 1.0, 0.25)
+		_paper_ok = "c_quiz"
+		game.sound.play("success" if clean else "fail")
+		if clean:
+			_dali.react("happy")
+			game.narami.play_action("cheer")
+			game.dali.play_action("cheer")
+			say("완벽한 감사! 꼼꼼함이 빛났어요.")
+		else:
+			_dali.react("oops")
+			game.narami.play_action("sad")
+			say("실수는 오답 노트가 되고, 오답 노트는 실력이 돼요."))
 
 
-func _audit_row(ok: bool, title: String, text: String) -> Control:
+## A face-down audit card.
+func _audit_back() -> Control:
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(190, 100)
+	card.size = card.custom_minimum_size
+	card.pivot_offset = Vector2(95, 50)
+	card.add_theme_stylebox_override("panel", UI.panel(NAVY, NAVY.darkened(0.3), 10, 10, 2))
+	var mark := UI.label("감사", 18, Color("#c9d6d4"), true)
+	mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	card.add_child(mark)
+	return card
+
+
+## Turns an audit card face up and stamps it.
+func _audit_front(card: PanelContainer, e: Dictionary) -> void:
+	for child in card.get_children():
+		child.queue_free()
+	var accent: Color = UI.GREEN if e.ok else UI.RED
+	card.add_theme_stylebox_override("panel", UI.panel(Color("#ffffff"), accent, 10, 10, 2))
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	row.add_child(UI.chip("이상 없음" if ok else "지적", UI.GREEN if ok else UI.RED, Color.WHITE, 10))
-	var l := UI.wrap(UI.label("%s — %s" % [title, text], 13, UI.INK if ok else UI.RED.darkened(0.25), not ok))
-	l.custom_minimum_size = Vector2(520, 0)
-	row.add_child(l)
-	return row
+	row.add_theme_constant_override("separation", 6)
+	card.add_child(row)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(col)
+	var title := UI.wrap(UI.label(str(e.title), 13, UI.INK, true))
+	title.custom_minimum_size = Vector2(116, 0)
+	col.add_child(title)
+	var gap := Control.new()
+	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(gap)
+	col.add_child(UI.label(str(e.tag), 11, accent.darkened(0.15), true))
+	var seal := _seal("통과" if e.ok else "지적", accent, 46, 13)
+	seal.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(seal)
+	game.sound.play("open")
+	_slam(seal, accent, 0.05, null)
+	if not e.ok:
+		var t := card.create_tween()
+		for i in 4:
+			t.tween_property(card, "rotation", 0.05 if i % 2 == 0 else -0.05, 0.04)
+		t.tween_property(card, "rotation", 0.0, 0.04)
 
 
 ## Adds a training item; returns true when it is new.
@@ -2216,7 +2307,9 @@ func _on_choice(id: String, _option: Dictionary) -> void:
 				say("%s로 가서 E를 눌러요." % _lead_spot())
 			"c_boss_next": _boss(_boss_step + 1)
 			"c_audit": _audit()
-			"c_quiz": _quiz_start()
+			"c_quiz":
+				_paper_close()
+				_quiz_start()
 			"c_quiz_next": _quiz_question()
 			"c_promote": _promote()
 
@@ -2250,6 +2343,18 @@ func _end_day_resume() -> void:
 	else:
 		state.day = int(state.day) + 1
 		start_day()
+
+
+## Close control for a work card: Esc on a keyboard, a tap on a phone.
+func _close_button() -> Button:
+	var b := Button.new()
+	b.text = "닫기 ×" if DisplayServer.is_touchscreen_available() else "Esc 닫기"
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 30)
+	UI.style_button(b, false)
+	b.add_theme_font_size_override("font_size", UI.px(12))
+	b.pressed.connect(_paper_choice.bind("close"))
+	return b
 
 
 ## Round number badge for numbered to-do lists.
