@@ -75,24 +75,22 @@ public static class BriefingRenderer
             name = "intro",
             shots = new[]
             {
-                S(5.5f, 40, new Vector3(0.6f, 7.2f, 7.6f), new Vector3(0.2f, 5.0f, 5.6f), new Vector3(0, 0.3f, -0.4f), new Vector3(0, 0.5f, -0.9f)),
-                S(10.8f, 42, new Vector3(-2.2f, 2.5f, 4.8f), new Vector3(2.3f, 2.5f, 4.8f), new Vector3(-2.6f, 0.8f, 1.5f), new Vector3(2.7f, 0.8f, 1.1f)),
-                S(16.0f, 34, new Vector3(1.9f, 1.6f, 4.2f), new Vector3(1.5f, 1.35f, 3.3f), new Vector3(1.35f, 0.65f, 1.25f), new Vector3(1.35f, 0.6f, 1.25f)),
-                S(21.5f, 44, new Vector3(-1.8f, 4.6f, 6.2f), new Vector3(1.8f, 4.6f, 6.2f), V0, V0),
-                S(26.0f, 34, new Vector3(1.4f, 1.35f, 5.0f), new Vector3(1.4f, 1.25f, 4.3f), new Vector3(1.35f, 1.05f, 1.25f), new Vector3(1.35f, 1.0f, 1.25f), true),
+                S(4.2f, 40, new Vector3(0.6f, 7.2f, 7.6f), new Vector3(0.2f, 5.3f, 5.9f), new Vector3(0, 0.3f, -0.4f), new Vector3(0, 0.5f, -0.9f)),
+                S(8.0f, 34, new Vector3(1.9f, 1.6f, 4.2f), new Vector3(1.5f, 1.35f, 3.3f), new Vector3(1.35f, 0.65f, 1.25f), new Vector3(1.35f, 0.6f, 1.25f)),
+                S(12.2f, 44, new Vector3(-1.4f, 4.6f, 6.2f), new Vector3(1.4f, 4.6f, 6.2f), V0, V0),
+                S(15.2f, 34, new Vector3(1.4f, 1.35f, 5.0f), new Vector3(1.4f, 1.25f, 4.3f), new Vector3(1.35f, 1.05f, 1.25f), new Vector3(1.35f, 1.0f, 1.25f), true),
             },
             beats = new[]
             {
-                Cap(0.6f, 5.3f, "달이", "조달청은 학교·병원·시청 같은 공공기관에\n필요한 물건과 서비스를 대신 사는 곳이에요."),
-                Cap(5.7f, 10.6f, "달이", "그 돈은 모두 국민 세금이에요.\n그래서 공정하고 투명하게 사야 해요."),
-                Cap(11.0f, 15.8f, "나라미", "오늘부터 저도 조달청 9급 주무관!\n업무를 하나씩 원칙대로 처리해 볼게요."),
-                Card(16.2f, 21.3f, "게임 목표", "원칙을 지키는 공무원으로 성장하기", new[]
+                Cap(0.5f, 4.0f, "달이", "조달청은 공공기관에 필요한 물건을\n국민 세금으로 공정하게 사는 곳이에요."),
+                Cap(4.4f, 7.8f, "나라미", "오늘부터 저도 조달청 9급 주무관!\n원칙대로 해 볼게요."),
+                Card(8.2f, 12.0f, "게임 목표", "원칙을 지키는 공무원으로 성장하기", new[]
                 {
                     "사무실을 걸어 다니며 업무 카드를 처리해요",
                     "규칙과 원칙에 맞는 선택이 언제나 정답",
                     "실적을 쌓아 9급에서 6급까지 승진해요",
                 }, "실수해도 괜찮아요 · 게임 오버는 없어요"),
-                Title(21.8f, 26.0f, "낙찰!", "조달청 사원 키우기"),
+                Title(12.4f, 15.2f, "낙찰!", "조달청 사원 키우기"),
             },
         },
         new Clip
@@ -164,7 +162,9 @@ public static class BriefingRenderer
         EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         SetupLighting();
         var font = AssetDatabase.LoadAssetAtPath<Font>("Assets/Fonts/Pretendard-Bold.otf");
-        var room = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Imported/room_pps_office.glb"));
+        // Each episode's clip is shot in that episode's office (EP2 mall operations, EP3 site).
+        string ep = clip.name.StartsWith("ep") ? clip.name.Substring(2) : "1";
+        var room = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Imported/room_pps_office_{ep}.glb"));
         TameEmission(room);
         var narami = Spawn("mascot_nareumi", G(new Vector3(1.05f, 0, 1.25f)), 8f);
         var dali = Spawn("mascot_dali", G(new Vector3(1.75f, 0, 1.4f)), -10f);

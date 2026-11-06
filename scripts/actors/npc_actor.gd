@@ -152,12 +152,14 @@ func build_person(person_name: String, id: String) -> bool:
 
 func _face(hd: Vector3, k: Dictionary) -> void:
 	for side in [-1.0, 1.0]:
-		# Big dark eyes with a catchlight, thick brows, rosy cheeks.
+		# Big dark eyes with a catchlight, soft brows, rosy cheeks.
 		var eye := _feature(_head, hd, side * 0.33, -0.02, Mascot.patch_mesh(Vector3(0.036, 0.05, 0.02)), Mascot.soft_mat(INK, false, 0.25), 0.006)
 		var spark := _mesh(eye, Mascot.patch_mesh(Vector3(0.012, 0.014, 0.008)), Vector3(-0.01, 0.017, 0.016), Mascot.shine_mat())
 		spark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var raised: bool = k.get("smirk", false) and side > 0
-		_feature(_head, hd, side * 0.34, 0.31 if raised else 0.27, Mascot.patch_mesh(Vector3(0.04, float(k.get("brows", 0.012)), 0.01)), Mascot.soft_mat(Color(k.hair_color).lightened(0.08), false), 0.004)
+		var brow := _feature(_head, hd, side * 0.34, 0.34 if raised else 0.3, Mascot.patch_mesh(Vector3(0.036, float(k.get("brows", 0.011)), 0.008)), Mascot.soft_mat(Color(k.hair_color).lightened(0.18), false), 0.004)
+		# Inner ends lifted a little: a relaxed, friendly brow rather than a frown.
+		brow.rotate_object_local(Vector3.FORWARD, side * 0.18)
 		_feature(_head, hd, side * 0.55, -0.24, Mascot.patch_mesh(Vector3(0.04, 0.022, 0.01)), Mascot.soft_mat(Color("#f29a86"), false), 0.004)
 	_feature(_head, hd, 0.0, -0.13, Mascot.patch_mesh(Vector3(0.026, 0.02, 0.02)), Mascot.soft_mat(Color("#eda98a")), 0.008)
 	var mouth := _feature(_head, hd, 0.06 if k.get("smirk", false) else 0.0, -0.36, Mascot.patch_mesh(Vector3(0.04, 0.014, 0.01)), Mascot.soft_mat(Color("#8a3f37"), false), 0.003)

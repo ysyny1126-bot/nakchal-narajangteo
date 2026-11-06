@@ -7,6 +7,7 @@ extends SceneTree
 
 const RoomBuilder = preload("res://scripts/world/room_builder.gd")
 const Mascot = preload("res://scripts/actors/mascot_actor.gd")
+const Career = preload("res://scripts/core/career_data.gd")
 
 const OUT := "res://build/unity_export/"
 
@@ -26,6 +27,22 @@ func _run() -> void:
 		_strip(root)
 		_export(root, "room_%s.glb" % room)
 		root.queue_free()
+	# The career office as each episode dresses it (room_pps_office_<ep>.glb),
+	# with that episode's lead and colleague, for the story clips.
+	for ep in [1, 2, 3]:
+		var info: Dictionary = Career.EPISODES[ep]
+		RoomBuilder.office_theme = ep
+		RoomBuilder.office_dept = info.dept
+		RoomBuilder.office_lead = str(info.lead)
+		RoomBuilder.office_name = Career.RANKS[ep].split(" ")[0]
+		RoomBuilder.office_items = []
+		var office := Node3D.new()
+		office.name = "Room_pps_office_%d" % ep
+		get_root().add_child(office)
+		RoomBuilder.build("pps_office", office)
+		_strip(office)
+		_export(office, "room_pps_office_%d.glb" % ep)
+		office.queue_free()
 	for kind in ["nareumi", "dali"]:
 		var actor: Node3D = Mascot.new()
 		actor.name = kind.capitalize()

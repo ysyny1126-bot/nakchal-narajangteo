@@ -107,17 +107,17 @@ rm override.cfg
 
 ### 스토리 영상 (Unity)
 
-사원 키우기 모드에서 이름을 정한 직후 게임 목적을 소개하는 영상(`intro`, 26초)이, 각 에피소드 브리핑 직전에는 그 달의 퀘스트 목표를 보여 주는 영상(`ep1`~`ep3`, 각 14초)이 한 번씩 나옵니다. 아무 키나 클릭으로 건너뛸 수 있고, 본 영상은 저장 기록(`clips_seen`)에 남아 이어하기 때 다시 나오지 않습니다.
+사원 키우기 모드에서 이름을 정한 직후 게임 목적을 소개하는 영상(`intro`, 15초)이, 각 에피소드 브리핑 직전에는 그 달의 퀘스트 목표를 보여 주는 영상(`ep1`~`ep3`, 각 14초)이 한 번씩 나옵니다. 아무 키나 클릭으로 건너뛸 수 있고, 본 영상은 저장 기록(`clips_seen`)에 남아 이어하기 때 다시 나오지 않습니다.
 
 - **연출 스크립트**: `unity_cinematic/Assets/Editor/BriefingRenderer.cs`. Godot에서 내보낸 조달청 사무실(`room_pps_office.glb`)과 나라미·달이를 배치하고, 카메라 이동·자막·퀘스트 카드·타이틀을 1280×720 JPG 프레임으로 렌더링합니다.
-- **변환**: `scripts/dev/frames_to_video.gd`가 프레임을 Godot 무비 라이터로 Ogg Theora(960×540)로 만듭니다. 외부 도구가 필요 없습니다.
+- **변환**: `scripts/dev/frames_to_video.gd`가 프레임을 Godot 무비 라이터로 Ogg Theora(1280×720)로 만듭니다. 외부 도구가 필요 없습니다.
 
 ```sh
 "/Users/yangsang-yun/Downloads/Godot.app/Contents/MacOS/Godot" --path . -s res://scripts/dev/gltf_export.gd
 cp build/unity_export/room_pps_office.glb build/unity_export/mascot_*.glb unity_cinematic/Assets/Imported/
 /Applications/Unity/Hub/Editor/6000.6.7f1/Unity.app/Contents/MacOS/Unity -batchmode -projectPath unity_cinematic -executeMethod BriefingRenderer.Render -quit
-printf '[editor]\nmovie_writer/video_quality=0.3\nmovie_writer/ogv/keyframe_interval=150\n' > override.cfg
-for c in intro ep1 ep2 ep3; do "/Users/yangsang-yun/Downloads/Godot.app/Contents/MacOS/Godot" --path . --resolution 960x540 --fixed-fps 30 --write-movie assets/cine/$c.ogv -s res://scripts/dev/frames_to_video.gd -- --clip=$c; done
+printf '[editor]\nmovie_writer/video_quality=0.5\nmovie_writer/ogv/keyframe_interval=150\n' > override.cfg
+for c in intro ep1 ep2 ep3; do "/Users/yangsang-yun/Downloads/Godot.app/Contents/MacOS/Godot" --path . --resolution 1280x720 --fixed-fps 30 --write-movie assets/cine/$c.ogv -s res://scripts/dev/frames_to_video.gd -- --clip=$c; done
 rm override.cfg
 ```
 

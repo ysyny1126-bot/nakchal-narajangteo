@@ -8,7 +8,7 @@ const SKIN := Color("#f2c3a0")
 const LOOKS := {
 	"lead_park": {
 		"hair": "side", "hair_color": Color("#3b2f2a"), "top": "suit", "jacket": Color("#2c3a5e"), "shirt": Color("#f4f1ea"), "tie": Color("#f0b429"),
-		"pants": Color("#2c3a5e"), "shoes": Color("#4a2c22"), "prop": "folder", "brows": 0.016, "width": 1.08,
+		"pants": Color("#2c3a5e"), "shoes": Color("#4a2c22"), "prop": "folder", "brows": 0.013, "width": 1.08,
 		"idle": ["nod", "read", "look"],
 	},
 	"lead_han": {

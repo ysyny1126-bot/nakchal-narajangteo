@@ -653,7 +653,7 @@ func cine_prefetch(names: Array) -> void:
 			continue
 		var path := "user://cine_%s.ogv" % clip_name
 		var request := HTTPRequest.new()
-		request.body_size_limit = 16 * 1024 * 1024
+		request.body_size_limit = 24 * 1024 * 1024
 		add_child(request)
 		_cine_requests[clip_name] = request
 		request.request_completed.connect(func(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
