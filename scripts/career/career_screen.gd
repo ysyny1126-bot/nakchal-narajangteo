@@ -86,6 +86,10 @@ var _talk_label: Label
 var _talk_left := 0.0
 var _chatter := 6.0
 var _last_pick := ""
+var _talk_height := 1.62
+## The counter phone rings while only phone calls wait there.
+var _phone_ringing := false
+var _ring_t := 0.0
 var _paper: Control
 var _paper_card: PanelContainer
 var _paper_tiles: Array = []
@@ -710,8 +714,17 @@ func _sync_spots() -> void:
 		m.visible = title != ""
 		m.title = title
 		m.set_status("next")
+	# A phone call at the counter rings the phone instead of bringing a visitor.
+	var at_counter: Array = groups.get("counter", [])
+	var calls := at_counter.filter(func(cid: String) -> bool: return _is_call(cid))
+	var was_ringing := _phone_ringing
+	_phone_ringing = not at_counter.is_empty() and calls.size() == at_counter.size()
+	if _phone_ringing and not was_ringing:
+		_ring_t = 0.8
 	for id in VISITORS:
 		var want: bool = groups.has(id) and spots.has(id) and spots[id].has("visitor")
+		if id == "counter" and _phone_ringing:
+			want = false
 		var has := _visitors.has(id) and is_instance_valid(_visitors[id])
 		if want and not has:
 			var npc := Npc.new()
@@ -2443,7 +2456,7 @@ func _hint_row(parts: Array) -> Control:
 
 ## Shows a short line over an NPC. Only one bubble shows at a time; a new
 ## line replaces the old one, and nothing shows while a card is open.
-func npc_say(npc: Node3D, text: String, mood: String = "calm", seconds: float = 3.2) -> void:
+func npc_say(npc: Node3D, text: String, mood: String = "calm", seconds: float = 3.2, height: float = 1.62) -> void:
 	if not is_instance_valid(npc):
 		return
 	if not is_instance_valid(_talk_box):
@@ -2471,6 +2484,7 @@ func npc_say(npc: Node3D, text: String, mood: String = "calm", seconds: float = 
 	_talk_label.text = text
 	_talk_box.reset_size()
 	_talker = npc
+	_talk_height = height
 	_talk_left = seconds
 	if npc.has_method("talk"):
 		npc.talk()
@@ -2486,7 +2500,7 @@ func _update_talk(delta: float) -> void:
 		var cam: Camera3D = game.cine_cam
 		var show: bool = _talk_left > 0.0 and is_instance_valid(_talker) and not busy and is_instance_valid(cam)
 		if show:
-			var head: Vector3 = _talker.global_position + Vector3(0, 1.62, 0)
+			var head: Vector3 = _talker.global_position + Vector3(0, _talk_height, 0)
 			show = not cam.is_position_behind(head)
 			if show:
 				var at := cam.unproject_position(head)
@@ -2498,6 +2512,11 @@ func _update_talk(delta: float) -> void:
 		_talk_box.visible = show
 	if busy or not state.phase in ["day", "boss_wait"]:
 		return
+	if _phone_ringing:
+		_ring_t -= delta
+		if _ring_t <= 0.0:
+			_ring_t = 6.0
+			_ring_phone()
 	_chatter -= delta
 	if _chatter > 0.0 or _talk_left > 0.0:
 		return
@@ -2522,6 +2541,25 @@ func _update_talk(delta: float) -> void:
 	if not lines.is_empty():
 		var line: Array = lines[randi() % lines.size()]
 		npc_say(pick[1], line[0], line[1])
+
+
+## True for cards that come in by phone (the org line says so).
+func _is_call(id: String) -> bool:
+	return "전화" in str(Career.card(id).get("org", ""))
+
+
+## One ring: the handset jiggles, a bubble and a soft bell.
+func _ring_phone() -> void:
+	var spots: Dictionary = game.layout.get("spots", {})
+	var phone: Node3D = spots.get("counter", {}).get("phone")
+	if not is_instance_valid(phone):
+		return
+	var t := phone.create_tween()
+	for i in 8:
+		t.tween_property(phone, "rotation:z", 0.12 if i % 2 == 0 else -0.12, 0.05)
+	t.tween_property(phone, "rotation:z", 0.0, 0.05)
+	npc_say(phone, "따르릉~ 따르릉~", "worry", 2.2, 0.12)
+	game.sound.play("ring")
 
 
 ## A colleague reacts to the card just handled, once the card is put away.

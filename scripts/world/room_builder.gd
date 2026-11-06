@@ -622,13 +622,19 @@ static func _pps_office(root: Node3D) -> Dictionary:
 	_deco(root, "trashcan", Vector3(2.05, 0, -0.55))
 	# Civil-complaint counter (front left): phone, sign and a visitor's side.
 	var counter := Vector3(-2.6, 0, 1.95)
-	Props.rounded_box(root, counter + Vector3(0, 0.48, 0), Vector3(0.6, 0.96, 1.1), Props.mat(Color("#e9e1d0"), 0.8), true)
-	Props.box(root, counter + Vector3(0, 0.98, 0), Vector3(0.72, 0.05, 1.2), Props.mat(Color("#3f5566"), 0.6))
-	Props.box(root, counter + Vector3(0.05, 1.04, -0.25), Vector3(0.22, 0.06, 0.16), Props.mat(Color("#2b2f33"), 0.5))
-	Props.box(root, counter + Vector3(0.05, 1.09, -0.25), Vector3(0.24, 0.04, 0.06), Props.mat(Color("#2b2f33"), 0.5))
-	Props.document(root, counter + Vector3(0.05, 1.01, 0.2), Vector2(0.24, 0.3), Color("#e07a35"), "", 0.1, 2)
+	# Kept a little low so the visitor standing behind it shows from the chest up.
+	var ch := 0.72
+	Props.rounded_box(root, counter + Vector3(0, ch * 0.5, 0), Vector3(0.6, ch, 1.1), Props.mat(Color("#e9e1d0"), 0.8), true)
+	Props.box(root, counter + Vector3(0, ch + 0.02, 0), Vector3(0.72, 0.05, 1.2), Props.mat(Color("#3f5566"), 0.6))
+	# The desk phone is one node so it can shake when a call comes in.
+	var phone := Node3D.new()
+	phone.position = counter + Vector3(0.05, ch + 0.05, -0.25)
+	root.add_child(phone)
+	Props.box(phone, Vector3(0, 0.03, 0), Vector3(0.22, 0.06, 0.16), Props.mat(Color("#2b2f33"), 0.5))
+	Props.box(phone, Vector3(0, 0.08, 0), Vector3(0.24, 0.04, 0.06), Props.mat(Color("#2b2f33"), 0.5))
+	Props.document(root, counter + Vector3(0.05, ch + 0.05, 0.2), Vector2(0.24, 0.3), Color("#e07a35"), "", 0.1, 2)
 	var counter_name: String = ["민원 창구", "구매 문의 창구", "검수 접수대"][clampi(theme, 1, 3) - 1]
-	var csign := Props.label(root, counter_name, counter + Vector3(0.37, 0.62, 0), 30, Color("#3f5566"))
+	var csign := Props.label(root, counter_name, counter + Vector3(0.37, ch * 0.65, 0), 30, Color("#3f5566"))
 	csign.rotation.y = PI * 0.5
 	# Reception table (front right) where visiting companies sit.
 	var visit := Vector3(2.8, 0, 1.25)
@@ -686,11 +692,11 @@ static func _pps_office(root: Node3D) -> Dictionary:
 		"npcs": {"lead": lead, "peer": peer},
 		"hotspots": [],
 		# Work spots for the career mode: where to stand, where the pin floats,
-		# and where a visitor waits (position, facing): visitors stand on the room
-		# side of the counter and behind the table so the camera never cuts them off.
+		# and where a visitor waits (position, facing): behind the low counter and
+		# behind the table, so neither is hidden from the camera.
 		"spots": {
 			"desk": {"name": "내 자리", "stand": desk_pos + Vector3(1.25, 0, 0.05), "anchor": desk_pos + Vector3(-0.2, 1.45, -0.1)},
-			"counter": {"name": counter_name, "stand": counter + Vector3(0.75, 0, 0), "anchor": counter + Vector3(0, 1.55, 0), "visitor": [counter + Vector3(0.05, 0, -0.85), 0.72]},
+			"counter": {"name": counter_name, "stand": counter + Vector3(0.75, 0, 0), "anchor": counter + Vector3(0, 1.55, 0), "visitor": [counter + Vector3(0.02, 0, -0.85), 0.5], "phone": phone},
 			"visit": {"name": "응접 테이블" if theme == 1 else "업체 상담석", "stand": visit + Vector3(-0.75, 0, 0), "anchor": visit + Vector3(0, 1.4, 0), "visitor": [visit + Vector3(0.05, 0, -0.72), -0.8]},
 			"door": {"name": "출입구" if theme != 3 else "현장 출입구", "stand": door + Vector3(-0.6, 0, 0), "anchor": door + Vector3(-0.2, 1.95, 0)},
 			"peer": {"name": "최 주무관 자리", "stand": Vector3(-2.55, 0, -0.5), "anchor": Vector3(-2.55, 1.3, -0.95)},
