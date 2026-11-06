@@ -43,8 +43,21 @@ static func mat(color: Color, roughness: float = 0.82, metallic: float = 0.0) ->
 	material.roughness = roughness
 	material.metallic = metallic
 	material.metallic_specular = 0.28
+	_outline(material)
 	_materials[key] = material
 	return material
+
+
+## The characters' thin dark outline on furniture too, so the room and the
+## people read as one cartoon style (an inverted hull drawn as a next pass).
+static func _outline(material: StandardMaterial3D) -> void:
+	var hull := StandardMaterial3D.new()
+	hull.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	hull.cull_mode = BaseMaterial3D.CULL_FRONT
+	hull.grow = true
+	hull.grow_amount = 0.012
+	hull.albedo_color = Color("#3b2e2a")
+	material.next_pass = hull
 
 
 static func glow_mat(color: Color, energy: float = 0.6) -> StandardMaterial3D:
@@ -100,6 +113,7 @@ static func surface_mat(texture_id: String, tint: Color = Color.WHITE, tile_m: f
 	material.metallic_specular = 0.25
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_materials[key] = material
+	_outline(material)
 	return material
 
 

@@ -13,7 +13,9 @@ const BIRD_WHITE := Color("#f1efe9")
 const BIRD_DARK := Color("#343a44")
 const BIRD_ORANGE := Color("#ec973f")
 const SCARF_RED := Color("#c63f3f")
-const VISOR_BLUE := Color("#9fd4e6")
+const VISOR_BLUE := Color("#5fb6dc")
+## Goggle frame and strap: a deeper teal so the goggles read against the white body.
+const VISOR_FRAME := Color("#3f84a3")
 const TIGER_ORANGE := Color("#e2772c")
 const TIGER_STRIPE := Color("#7f3815")
 const FUR_WHITE := Color("#fbf6ec")
@@ -223,7 +225,7 @@ static func glass_mat() -> StandardMaterial3D:
 	if _mat_cache.has("glass"):
 		return _mat_cache.glass
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(VISOR_BLUE, 0.88)
+	material.albedo_color = Color(VISOR_BLUE, 0.72)
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	material.roughness = 0.12
 	material.metallic_specular = 0.8
@@ -287,12 +289,12 @@ func _build_nareumi() -> void:
 	for side in [-1.0, 1.0]:
 		_eye(body, c, dim, egg, side * 0.34, 0.41, Vector3(0.052, 0.07, 0.03), 0.036)
 	_part(body, patch_mesh(dim, egg, Vector2(-1.02, 1.02), Vector2(0.21, 0.62), 0.03, Vector2i(26, 8)), c, glass_mat(), "Visor glass")
-	var frame := soft_mat(Color("#86b9c6"), false, 0.4)
+	var frame := soft_mat(VISOR_FRAME, true, 0.4)
 	_part(body, patch_mesh(dim, egg, Vector2(-1.06, 1.06), Vector2(0.6, 0.67), 0.033, Vector2i(26, 2)), c, frame, "Visor rim top")
 	_part(body, patch_mesh(dim, egg, Vector2(-1.06, 1.06), Vector2(0.16, 0.22), 0.033, Vector2i(26, 2)), c, frame, "Visor rim bottom")
-	_part(body, patch_mesh(dim, egg, Vector2(1.04, TAU - 1.04), Vector2(0.33, 0.49), 0.014, Vector2i(26, 3)), c, soft_mat(Color("#86b9c6"), false), "Visor strap")
+	_part(body, patch_mesh(dim, egg, Vector2(1.04, TAU - 1.04), Vector2(0.33, 0.49), 0.014, Vector2i(26, 3)), c, soft_mat(VISOR_FRAME, false), "Visor strap")
 	for side in [-1.0, 1.0]:
-		_feature(body, c, dim, egg, side * 1.07, 0.41, patch_mesh(Vector3(0.04, 0.05, 0.03)), soft_mat(Color("#86b9c6"), true, 0.4), 0.005)
+		_feature(body, c, dim, egg, side * 1.07, 0.41, patch_mesh(Vector3(0.04, 0.05, 0.03)), soft_mat(VISOR_FRAME, true, 0.4), 0.005)
 	var glint := _part(body, patch_mesh(dim, egg, Vector2(-0.78, -0.5), Vector2(0.48, 0.56), 0.04, Vector2i(6, 2)), c, shine_mat(0.6), "Visor glint")
 	glint.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Small orange beak just under the visor.

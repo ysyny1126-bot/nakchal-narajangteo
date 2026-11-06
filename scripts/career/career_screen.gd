@@ -490,7 +490,7 @@ func _refresh_quests() -> void:
 	more.flat = true
 	more.focus_mode = Control.FOCUS_NONE
 	more.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	more.text = ("▾ 접기" if _quests_open else "▸ 다른 퀘스트 %d개" % (3 if state.phase == "day" else 2))
+	more.text = ("− 접기" if _quests_open else "+ 다른 퀘스트 %d개" % (3 if state.phase == "day" else 2))
 	more.add_theme_font_size_override("font_size", UI.px(11))
 	more.add_theme_color_override("font_color", UI.INK_SOFT)
 	more.add_theme_color_override("font_hover_color", UI.ORANGE)

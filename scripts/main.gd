@@ -157,30 +157,36 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color("#1a2427")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("#c3ccd2")
-	env.ambient_light_energy = 0.32
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-	env.tonemap_exposure = 1.0
+	env.ambient_light_color = Color("#d9dde6")
+	env.ambient_light_energy = 0.42
+	# Filmic tone with a gentle colour lift for a warm, finished look.
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 1.12
+	env.tonemap_white = 6.0
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.0
+	env.adjustment_contrast = 1.05
 	env.glow_enabled = false
 	env_node.environment = env
 	add_child(env_node)
 	var key := DirectionalLight3D.new()
 	key.name = "KeyLight"
 	key.rotation_degrees = Vector3(-56, -34, 0)
-	key.light_color = Color("#fff0dc")
-	key.light_energy = 0.7
+	key.light_color = Color("#fff1de")
+	key.light_energy = 0.92
 	key.shadow_enabled = true
-	key.shadow_blur = 1.6
-	key.shadow_opacity = 0.75
+	key.shadow_blur = 2.2
+	key.shadow_opacity = 0.62
 	key.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	key.directional_shadow_max_distance = 40.0
 	add_child(key)
 	var fill := DirectionalLight3D.new()
 	fill.name = "FillLight"
 	fill.rotation_degrees = Vector3(-30, 150, 0)
-	fill.light_color = Color("#b8cde4")
-	fill.light_energy = 0.12
+	fill.light_color = Color("#a9c6ea")
+	fill.light_energy = 0.22
 	add_child(fill)
+	_add_vignette_and_lamp()
 	camera = Camera3D.new()
 	camera.name = "FixedCamera"
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -194,6 +200,32 @@ func _build_environment() -> void:
 	cine_cam.near = 0.05
 	cine_cam.far = 80.0
 	add_child(cine_cam)
+
+
+## A soft vignette that frames the room (under the UI) and a warm pool of
+## light over the desks.
+func _add_vignette_and_lamp() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "Vignette"
+	layer.layer = 1
+	add_child(layer)
+	var vig := ColorRect.new()
+	vig.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sh := Shader.new()
+	sh.code = "shader_type canvas_item;\nvoid fragment() {\n\tvec2 d = UV - vec2(0.5);\n\tfloat v = smoothstep(0.42, 0.85, length(d * vec2(1.0, 0.8)));\n\tCOLOR = vec4(0.04, 0.07, 0.08, v * 0.55);\n}"
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	vig.material = m
+	layer.add_child(vig)
+	var lamp := OmniLight3D.new()
+	lamp.name = "DeskLamp"
+	lamp.light_color = Color("#ffe4c0")
+	lamp.light_energy = 0.7
+	lamp.omni_range = 4.2
+	lamp.omni_attenuation = 1.6
+	lamp.position = Vector3(0.0, 2.2, 0.3)
+	add_child(lamp)
 
 
 func _build_actors() -> void:
