@@ -93,6 +93,18 @@ func _career_shots() -> void:
 	cs._on_choice("c_start", {})
 	await _wait(40)
 	await _shot("career_02_day1")
+	# NPCs in motion: the colleague sips coffee while the lead says something.
+	game.layout.npcs.peer.play("sip", 2.2)
+	cs.npc_say(game.layout.npcs.lead, "이번 공고, 꼼꼼히 봐요.", "calm")
+	await _seconds(0.9)
+	await _shot("career_02d_chatter")
+	# Walk onto today's dropped memo.
+	if is_instance_valid(cs._memo):
+		_place(cs._memo.global_position + Vector3(0.1, 0, 0.1), Vector3(0, 0, 1))
+		await _wait(30)
+		await _shot("career_02a_memo")
+		cs._paper_choice("close")
+		await _wait(10)
 	# Walk up to the desk spot: the pin reads "E  ..." and the camera follows.
 	_place(game.layout.spots.desk.stand + Vector3(0.05, 0, 0.1), Vector3(0, 0, 1))
 	await _wait(60)

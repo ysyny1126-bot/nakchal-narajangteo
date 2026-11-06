@@ -22,6 +22,7 @@ const DeskScreen = preload("res://scripts/ui/desk_screen.gd")
 const Desk = preload("res://scripts/core/desk_items.gd")
 const CareerScreen = preload("res://scripts/career/career_screen.gd")
 const Career = preload("res://scripts/core/career_data.gd")
+const Memos = preload("res://scripts/core/memos.gd")
 
 const SAVE_PATH := "user://nakchal-save.json"
 const SAVE_VERSION := 4
@@ -2565,6 +2566,15 @@ func _show_collection() -> void:
 		l.custom_minimum_size.x = 310
 		grid.add_child(l)
 	custom.add_child(grid)
+	# Memos picked up in the office, one per working day.
+	var memos: Array = profile.get("memos", [])
+	custom.add_child(UI.label("떨어진 메모 %d / %d" % [memos.size(), Memos.MEMOS.size()], 13, UI.NAVY, true))
+	for id in Memos.MEMOS:
+		var m: Dictionary = Memos.MEMOS[id]
+		var have := memos.has(id)
+		var line := UI.wrap(UI.label(("● %s — %s" % [m.q, m.a]) if have else "○ EP%d %d일 차 · 아직 찾지 못한 메모" % [int(m.ep), int(m.day)], 12, UI.INK if have else UI.MUTED, have))
+		line.custom_minimum_size.x = 640
+		custom.add_child(line)
 	if ending_hold:
 		modal.add_buttons([{"label": "엔딩 화면으로", "id": "ending_final"}])
 	else:

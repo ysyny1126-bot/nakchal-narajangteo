@@ -17,6 +17,8 @@ const Glossary = preload("res://scripts/core/glossary.gd")
 const DaliIcon = preload("res://scripts/ui/dali_icon.gd")
 const Marker = preload("res://scripts/world/interact_marker.gd")
 const Npc = preload("res://scripts/actors/npc_actor.gd")
+const Memos = preload("res://scripts/core/memos.gd")
+const Props = preload("res://scripts/world/props.gd")
 
 const NAVY := Color("#1f3d4a")
 const MINT := Color("#4fb79e")
@@ -29,6 +31,18 @@ const KIND_COLOR := {"careful": Color("#3f8f6a"), "quick": Color("#3f78a8"), "ea
 const SPOT_OF := {"work": "desk", "civil": "counter", "lure": "visit", "field": "door", "bonus": "peer"}
 const VISITORS := {"counter": ["민원인", Color("#6b8f5a"), "visitor_civil"], "visit": ["업체 직원", Color("#5d5f66"), "visitor_vendor"]}
 const NEAR := 0.85
+## What a visitor says on arrival: line and mood.
+const VISITOR_HELLO := {"counter": ["저… 여쭤볼 게 있는데요.", "worry"], "visit": ["잠깐 시간 괜찮으세요?", "sly"]}
+const MOOD_COLOR := {"calm": Color("#1f3d4a"), "happy": Color("#3f8f6a"), "worry": Color("#e07a35"), "sly": Color("#8a63c4")}
+## Background chatter by who is speaking; lead lines are per episode.
+const CHATTER := {
+	"lead1": [["이번 공고, 꼼꼼히 봐요.", "calm"], ["규격서는 성능 기준으로!", "calm"], ["커피 한잔 할까…", "happy"]],
+	"lead2": [["가격 그래프가 좀 수상한데…", "worry"], ["오늘 문의가 많네요.", "calm"], ["상생세일 반응 좋아요!", "happy"]],
+	"lead3": [["납기 D-10, 서둘러야 해요.", "worry"], ["검수는 눈으로, 손으로!", "calm"], ["현장은 안전이 먼저!", "calm"]],
+	"peer": [["후… 서류가 산더미네요.", "worry"], ["커피가 다 식었네…", "calm"], ["오늘 점심 뭐 먹지?", "happy"], ["힘내요, 신입님!", "happy"]],
+	"counter": [["언제쯤 처리될까요…", "worry"], ["서류 이거 맞나요?", "worry"]],
+	"visit": [["이번 건, 잘 부탁드려요~", "sly"], ["저희 제품 정말 좋아요.", "sly"]],
+}
 
 ## Main scene (sound, modal, mascots, 3D stage, save).
 var game: Node
@@ -64,6 +78,14 @@ var _markers := {}
 var _visitors := {}
 var _stage: Node3D
 var _near := ""
+var _memo: Node3D
+## One NPC speech bubble at a time: who says it, the panel, and timers.
+var _talker: Node3D
+var _talk_box: PanelContainer
+var _talk_label: Label
+var _talk_left := 0.0
+var _chatter := 6.0
+var _last_pick := ""
 var _paper: Control
 var _paper_card: PanelContainer
 var _paper_tiles: Array = []
@@ -359,6 +381,7 @@ func refresh() -> void:
 	_refresh_hand()
 	_refresh_quests()
 	_sync_spots()
+	_sync_memo()
 
 
 func _refresh_hand() -> void:
@@ -446,6 +469,10 @@ func _refresh_quests() -> void:
 		_quest_row("오늘", "업무 카드 모두 처리하기", float(int(state.today_done)) / maxf(today_total, 1), "%d / %d" % [int(state.today_done), today_total], "실적")
 		var clean := int(state.lapse_today) == 0
 		_quest_row("도전", "오늘 타협 없이 퇴근하기", 1.0 if clean and int(state.today_done) >= today_total else 0.0, "진행 중" if clean else "실패", "+50P", not clean)
+		var memo := str(state.get("memo_today", ""))
+		if memo != "":
+			var got: bool = (state.get("memos", []) as Array).has(memo)
+			_quest_row("메모", "사무실에 떨어진 메모 찾기", 1.0 if got else 0.0, "찾았어요!" if got else "어딘가에…", "상식")
 	var terms := _ep_terms()
 	var seen := 0
 	for id in terms:
@@ -593,6 +620,12 @@ func _process(delta: float) -> void:
 		return
 	if not is_instance_valid(_overlay):
 		_follow_camera(delta)
+	_update_talk(delta)
+	if is_instance_valid(_memo) and can_walk():
+		var mp := _memo.global_position
+		var pp: Vector3 = game.player.global_position
+		if Vector2(pp.x - mp.x, pp.z - mp.z).length() < 0.55:
+			_pick_memo()
 	var best := ""
 	if can_walk():
 		var best_d := NEAR
@@ -659,6 +692,10 @@ func _sync_spots() -> void:
 			_stage.add_child(m)
 			m.setup({"id": id, "label": spots[id].name, "stand": spots[id].stand, "anchor": spots[id].anchor})
 			_markers[id] = m
+		var npcs: Dictionary = game.layout.get("npcs", {})
+		for id in npcs:
+			if is_instance_valid(npcs[id]) and "watch" in npcs[id]:
+				npcs[id].watch = game.player
 	var groups := _spot_cards()
 	for id in _markers:
 		var m: Node3D = _markers[id]
@@ -684,6 +721,8 @@ func _sync_spots() -> void:
 			npc.rotation.y = spots[id].visitor[1]
 			_stage.add_child(npc)
 			_visitors[id] = npc
+			npc.watch = game.player
+			npc_say(npc, VISITOR_HELLO[id][0], VISITOR_HELLO[id][1])
 		elif not want and has:
 			_visitors[id].queue_free()
 			_visitors.erase(id)
@@ -1273,6 +1312,8 @@ func start_day() -> void:
 	state.lapse_today = 0
 	state.today_perf = 0
 	state.today_log = []
+	var memo := Memos.for_day(int(state.ep), day)
+	state.memo_today = memo if not (state.get("memos", []) as Array).has(memo) else ""
 	game._career_write()
 	refresh()
 	var line := "%d일 차 출근! 업무 %d건 · 행동력 %d." % [day, hand.size(), int(state.ap)]
@@ -1280,6 +1321,8 @@ func start_day() -> void:
 		line += " 어제 무리해서 행동력 -1."
 	if not notes.is_empty():
 		line += " " + " · ".join(notes)
+	if str(state.memo_today) != "":
+		line += " 사무실 어딘가에 메모가 떨어져 있대요!"
 	say(line)
 	game.sound.play("open")
 
@@ -1457,6 +1500,7 @@ func _pick(kind: String) -> void:
 	var deltas := _delta_chips(gain, cost)
 	_paper_result(kind, stamp, headline, body, lesson, deltas, "확인", "c_after", int(combo_info[0]) if principled else 0, bool(combo_info[1]))
 	_react("principled" if principled else kind, int(combo_info[0]))
+	_last_pick = "principled" if principled else kind
 	_float(_float_text(gain), UI.GREEN.lightened(0.3) if kind != "easy" else Color("#ff9b8a"))
 	game.sound.play("success" if kind == "careful" else ("fail" if kind == "easy" else "coin"))
 	if mood == "sad":
@@ -1514,6 +1558,7 @@ func _after_card() -> void:
 	_paper_close()
 	game.modal.close()
 	refresh()
+	_colleague_reaction()
 	if (state.hand as Array).is_empty():
 		say("오늘 업무 끝! 출입구로 가서 퇴근해요.")
 	elif int(state.ap) == 0:
@@ -2302,6 +2347,7 @@ func _on_choice(id: String, _option: Dictionary) -> void:
 			"c_boss_wait":
 				game.modal.close()
 				_paper_close()
+				_chatter = 0.5
 				state.phase = "boss_wait"
 				game._career_write()
 				refresh()
@@ -2391,6 +2437,196 @@ func _hint_row(parts: Array) -> Control:
 			l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			h.add_child(l)
 	return p
+
+
+# --- NPC speech bubbles ---------------------------------------------------------------
+
+## Shows a short line over an NPC. Only one bubble shows at a time; a new
+## line replaces the old one, and nothing shows while a card is open.
+func npc_say(npc: Node3D, text: String, mood: String = "calm", seconds: float = 3.2) -> void:
+	if not is_instance_valid(npc):
+		return
+	if not is_instance_valid(_talk_box):
+		_talk_box = PanelContainer.new()
+		_talk_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_talk_label = UI.label("", 13, UI.INK, true)
+		_talk_box.add_child(_talk_label)
+		var tail := Control.new()
+		tail.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tail.draw.connect(func() -> void:
+			var c: Color = _talk_box.get_meta("mood_color", UI.NAVY)
+			var x := _talk_box.size.x * 0.5
+			var y := _talk_box.size.y
+			tail.draw_colored_polygon(PackedVector2Array([Vector2(x - 8, y - 2), Vector2(x + 8, y - 2), Vector2(x, y + 9)]), c)
+			tail.draw_colored_polygon(PackedVector2Array([Vector2(x - 5, y - 3), Vector2(x + 5, y - 3), Vector2(x, y + 5)]), Color("#fffdf6")))
+		_talk_box.add_child(tail)
+		tail.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		add_child(_talk_box)
+	var color: Color = MOOD_COLOR.get(mood, UI.NAVY)
+	var st := UI.panel(Color("#fffdf6"), color, 12, 10, 2)
+	st.content_margin_top = 5
+	st.content_margin_bottom = 6
+	_talk_box.add_theme_stylebox_override("panel", st)
+	_talk_box.set_meta("mood_color", color)
+	_talk_label.text = text
+	_talk_box.reset_size()
+	_talker = npc
+	_talk_left = seconds
+	if npc.has_method("talk"):
+		npc.talk()
+	_talk_box.modulate.a = 0.0
+	_talk_box.create_tween().tween_property(_talk_box, "modulate:a", 1.0, 0.18)
+
+
+## Keeps the bubble over its speaker and drives the occasional chatter.
+func _update_talk(delta: float) -> void:
+	var busy: bool = is_instance_valid(_paper) or game.modal.is_open() or is_instance_valid(_overlay)
+	if is_instance_valid(_talk_box):
+		_talk_left -= delta
+		var cam: Camera3D = game.cine_cam
+		var show: bool = _talk_left > 0.0 and is_instance_valid(_talker) and not busy and is_instance_valid(cam)
+		if show:
+			var head: Vector3 = _talker.global_position + Vector3(0, 1.62, 0)
+			show = not cam.is_position_behind(head)
+			if show:
+				var at := cam.unproject_position(head)
+				var pos := at - Vector2(_talk_box.size.x * 0.5, _talk_box.size.y + 8.0)
+				# Stay under Dali's guide bar and left of the ID panel.
+				pos.x = clampf(pos.x, 8.0, PANEL_X - 16.0 - _talk_box.size.x)
+				pos.y = maxf(pos.y, 112.0)
+				_talk_box.position = pos
+		_talk_box.visible = show
+	if busy or not state.phase in ["day", "boss_wait"]:
+		return
+	_chatter -= delta
+	if _chatter > 0.0 or _talk_left > 0.0:
+		return
+	_chatter = randf_range(10.0, 15.0)
+	var npcs: Dictionary = game.layout.get("npcs", {})
+	if state.phase == "boss_wait" and npcs.has("lead"):
+		npc_say(npcs.lead, "잠깐 제 자리로 와 볼래요?", "calm", 4.0)
+		npcs.lead.play("wave" if npcs.lead.idle_actions.has("wave") else "nod")
+		return
+	var who := []
+	for id in ["lead", "peer"]:
+		if npcs.has(id) and is_instance_valid(npcs[id]):
+			who.append([id, npcs[id]])
+	for id in _visitors:
+		if is_instance_valid(_visitors[id]):
+			who.append([id, _visitors[id]])
+	if who.is_empty():
+		return
+	var pick: Array = who[randi() % who.size()]
+	var key: String = "lead%d" % clampi(int(state.ep), 1, 3) if pick[0] == "lead" else str(pick[0])
+	var lines: Array = CHATTER.get(key, [])
+	if not lines.is_empty():
+		var line: Array = lines[randi() % lines.size()]
+		npc_say(pick[1], line[0], line[1])
+
+
+## A colleague reacts to the card just handled, once the card is put away.
+func _colleague_reaction() -> void:
+	var npcs: Dictionary = game.layout.get("npcs", {})
+	var kind := _last_pick
+	_last_pick = ""
+	if kind == "" or kind == "bonus" or randf() > 0.7:
+		return
+	var who: Node3D = npcs.get("peer") if kind == "principled" and randf() < 0.5 else npcs.get("lead")
+	if not is_instance_valid(who):
+		return
+	match kind:
+		"principled": npc_say(who, ["오, 원칙대로! 멋져요.", "좋아요, 그렇게 하는 거예요.", "깔끔하네요!"][randi() % 3], "happy")
+		"quick": npc_say(who, "그거… 다시 안 봐도 돼요?", "worry")
+		"easy": npc_say(who, "음… 괜찮을까요?", "worry")
+	who.play("nod" if kind == "principled" else "scratch" if who.idle_actions.has("scratch") else "look", 1.4)
+	_chatter = maxf(_chatter, 8.0)
+
+
+# --- Dropped memo -------------------------------------------------------------------
+
+## Shows today's memo lying on the floor while it is still to be found.
+func _sync_memo() -> void:
+	var id := str(state.get("memo_today", ""))
+	var want: bool = state.phase == "day" and id != "" and not (state.get("memos", []) as Array).has(id) and is_instance_valid(_stage)
+	if is_instance_valid(_memo) and (not want or _memo.get_parent() != _stage):
+		_memo.queue_free()
+		_memo = null
+	if want and not is_instance_valid(_memo):
+		_memo = Node3D.new()
+		_memo.position = Memos.spot_for(id)
+		_stage.add_child(_memo)
+		Props.document(_memo, Vector3(0, 0.0, 0), Vector2(0.26, 0.2), UI.GOLD, "", 0.5, 1)
+		var glow := Props.cylinder(_memo, Vector3(0, 0.005, 0), 0.2, 0.006, Props.glow_mat(Color("#f2c66a"), 0.25))
+		glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var tag := Props.label(_memo, "메모!", Vector3(0, 0.55, 0), 30, Color("#c98a1c"), false)
+		tag.outline_size = 8
+		tag.outline_modulate = Color("#fffaf0")
+		tag.no_depth_test = true
+		var bob := tag.create_tween().set_loops()
+		bob.tween_property(tag, "position:y", 0.65, 0.6).set_trans(Tween.TRANS_SINE)
+		bob.tween_property(tag, "position:y", 0.55, 0.6).set_trans(Tween.TRANS_SINE)
+
+
+## Picks up today's memo: a small reward, a fact, and a page in the collection.
+func _pick_memo() -> void:
+	var id := str(state.get("memo_today", ""))
+	if id == "" or not Memos.MEMOS.has(id):
+		return
+	var m: Dictionary = Memos.MEMOS[id]
+	var mine: Array = state.get("memos", [])
+	if not mine.has(id):
+		mine.append(id)
+	state.memos = mine
+	var all: Array = game.profile.get("memos", [])
+	if not all.has(id):
+		all.append(id)
+	game.profile["memos"] = all
+	var gain: Dictionary = m.gain
+	var reward := ""
+	if gain.has("perf"):
+		_apply_gain({"perf": int(gain.perf)})
+		reward = "실적 +%d" % int(gain.perf)
+	if gain.has("points"):
+		state.desk.points = int(state.desk.points) + int(gain.points)
+		reward = "복지포인트 +%dP" % int(gain.points)
+	game._save_profile()
+	game._career_write()
+	if is_instance_valid(_memo):
+		_memo.queue_free()
+		_memo = null
+	game.sound.play("coin")
+	game.narami.play_action("inspect")
+	_dali.react("happy")
+	var v := _paper_open(UI.GOLD, false)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	v.add_child(head)
+	head.add_child(UI.chip("떨어진 메모 발견!", UI.GOLD, Color.WHITE, 11))
+	head.add_child(UI.chip("메모 %d / %d" % [all.size(), Memos.MEMOS.size()], Color("#f1e3c8"), Color("#8a5a1c"), 11))
+	v.add_child(UI.label(str(m.title), 13, UI.INK_SOFT, true))
+	v.add_child(UI.wrap(UI.label("Q. " + str(m.q), 22, UI.INK, true)))
+	var band := PanelContainer.new()
+	band.add_theme_stylebox_override("panel", UI.panel(Color("#fff4d2"), Color("#f0dca0"), 10, 14))
+	var answer := UI.wrap(UI.label(str(m.a), 15, UI.INK, true))
+	answer.custom_minimum_size = Vector2(580, 0)
+	band.add_child(answer)
+	v.add_child(band)
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 6)
+	v.add_child(foot)
+	foot.add_child(UI.chip(reward, Color("#e3f0e4"), UI.GREEN.darkened(0.2), 13))
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(gap)
+	var ok := Button.new()
+	ok.text = "챙겨 두기   Enter"
+	ok.focus_mode = Control.FOCUS_NONE
+	ok.custom_minimum_size = Vector2(0, 42)
+	UI.style_button(ok, true, UI.GOLD)
+	ok.pressed.connect(_paper_choice.bind("close"))
+	foot.add_child(ok)
+	_paper_ok = "close"
+	say("메모를 주웠어요! 모은 메모는 도감에서 다시 볼 수 있어요.")
 
 
 ## This episode's lead ("박 팀장", "한 과장", …) and where they sit.

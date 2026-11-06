@@ -18,6 +18,16 @@ var _head: Node3D
 var _arms: Array[Node3D] = []
 var _talk := 0.0
 var _seed := 0.0
+## Small idle actions this person picks from now and then ("type", "sip", …).
+var idle_actions: Array = []
+## The employee; heads turn to glance at them when they come close.
+var watch: Node3D
+var _hand: Node3D
+var _action := ""
+var _action_t := 0.0
+var _action_len := 1.6
+var _idle_timer := 3.0
+var _yaw := 0.0
 
 
 func build(person_name: String, jacket: Color, hair: Color, skin: Color = Color("#eac2a0"), tie: Color = Color("#c9573f")) -> void:
@@ -117,7 +127,13 @@ func build_person(person_name: String, id: String) -> bool:
 		_mesh(arm, Mascot.patch_mesh(Vector3(0.058, 0.13, 0.06)), Vector3(side * 0.02, -0.11, 0.0), jacket)
 		_mesh(arm, Mascot.patch_mesh(Vector3(0.045, 0.045, 0.045)), Vector3(side * 0.025, -0.25, 0.02), skin)
 		_arms.append(arm)
+	# The prop hangs off the right arm so it follows the hand (sipping, holding up).
+	_hand = Node3D.new()
+	_hand.transform = _arms[1].transform.affine_inverse()
+	_arms[1].add_child(_hand)
 	_prop(str(k.prop), Vector3(0.24 * wide, 0.36, 0.08))
+	idle_actions = k.get("idle", ["nod", "look"])
+	_idle_timer = randf_range(1.5, 6.0)
 	# Head
 	_head = Node3D.new()
 	_head.position = Vector3(0, 0.9, 0)
@@ -208,13 +224,13 @@ func _hair(hd: Vector3, k: Dictionary) -> void:
 func _prop(kind: String, at: Vector3) -> void:
 	match kind:
 		"folder":
-			_box(_body, Vector3(0.03, 0.16, 0.12), at + Vector3(0.03, 0.03, 0.0), Color("#3a2a26"))
+			_box(_hand, Vector3(0.03, 0.16, 0.12), at + Vector3(0.03, 0.03, 0.0), Color("#3a2a26"))
 		"tablet":
-			var t := _box(_body, Vector3(0.13, 0.17, 0.016), at + Vector3(-0.03, 0.1, 0.08), Color("#55585e"))
+			var t := _box(_hand, Vector3(0.13, 0.17, 0.016), at + Vector3(-0.03, 0.1, 0.08), Color("#55585e"))
 			t.rotation.x = -0.5
 			_box(t, Vector3(0.11, 0.15, 0.004), Vector3(0, 0, 0.01), Color("#8fb7cf"), false)
 		"clipboard":
-			var c := _box(_body, Vector3(0.13, 0.17, 0.012), at + Vector3(-0.05, 0.08, 0.08), Color("#7a5236"))
+			var c := _box(_hand, Vector3(0.13, 0.17, 0.012), at + Vector3(-0.05, 0.08, 0.08), Color("#7a5236"))
 			c.rotation.x = -0.35
 			_box(c, Vector3(0.11, 0.14, 0.004), Vector3(0, -0.008, 0.009), Color("#f7f4ec"), false)
 			for row in 3:
@@ -229,7 +245,7 @@ func _prop(kind: String, at: Vector3) -> void:
 			cup.mesh = cyl
 			cup.material_override = Mascot.soft_mat(Color("#f4efe4"))
 			cup.position = at + Vector3(-0.02, 0.08, 0.05)
-			_body.add_child(cup)
+			_hand.add_child(cup)
 			var sleeve := MeshInstance3D.new()
 			var band := CylinderMesh.new()
 			band.top_radius = 0.037
@@ -239,12 +255,12 @@ func _prop(kind: String, at: Vector3) -> void:
 			sleeve.material_override = Mascot.soft_mat(Color("#8a5a3a"), false)
 			cup.add_child(sleeve)
 		"envelope":
-			var e := _box(_body, Vector3(0.17, 0.13, 0.014), Vector3(0.03, 0.47, 0.15), Color("#e3b866"))
+			var e := _box(_hand, Vector3(0.17, 0.13, 0.014), Vector3(0.03, 0.47, 0.15), Color("#e3b866"))
 			e.rotation.z = -0.15
 			_box(e, Vector3(0.02, 0.02, 0.004), Vector3(0, 0.03, 0.009), Color("#c99a48"), false)
 		"briefcase":
-			_box(_body, Vector3(0.19, 0.14, 0.06), at + Vector3(0.03, -0.07, 0.0), Color("#5a3626"))
-			_box(_body, Vector3(0.03, 0.02, 0.01), at + Vector3(0.03, -0.04, 0.034), Color("#d8b25a"), false)
+			_box(_hand, Vector3(0.19, 0.14, 0.06), at + Vector3(0.03, -0.07, 0.0), Color("#5a3626"))
+			_box(_hand, Vector3(0.03, 0.02, 0.01), at + Vector3(0.03, -0.04, 0.034), Color("#d8b25a"), false)
 
 
 func _box(parent: Node3D, size: Vector3, position: Vector3, color: Color, outline: bool = true) -> MeshInstance3D:
@@ -274,11 +290,73 @@ func _mesh(parent: Node3D, mesh: Mesh, position: Vector3, material: Material) ->
 	return instance
 
 
+## Plays one small action now (see _process for the list).
+func play(action: String, length: float = 1.6) -> void:
+	_action = action
+	_action_t = 0.0
+	_action_len = length
+
+
 func _process(delta: float) -> void:
 	var t := float(Time.get_ticks_msec()) * 0.001 + _seed
 	_talk = maxf(0.0, _talk - delta * 1.2)
 	_body.rotation.z = sin(t * 0.9) * 0.015
-	_head.rotation.x = sin(t * 1.3) * 0.03 + sin(_talk * PI * 4.0) * 0.12 * _talk
-	_head.rotation.y = sin(t * 0.5) * 0.12
+	# Glance at the employee when they come near, otherwise look around slowly.
+	var yaw := sin(t * 0.5) * 0.12
+	if is_instance_valid(watch):
+		var to := to_local(watch.global_position)
+		if Vector2(to.x, to.z).length() < 2.4 and to.z > -0.2:
+			yaw = clampf(atan2(to.x, to.z), -0.7, 0.7)
+	_yaw = lerpf(_yaw, yaw, minf(1.0, delta * 3.0))
+	var head_x := sin(t * 1.3) * 0.03 + sin(_talk * PI * 4.0) * 0.12 * _talk
+	# Idle actions: one at a time, a few seconds apart.
+	if _action == "":
+		_idle_timer -= delta
+		if _idle_timer <= 0.0 and not idle_actions.is_empty():
+			play(str(idle_actions[randi() % idle_actions.size()]), 2.2)
+			_idle_timer = randf_range(4.0, 8.0)
+	var p := 0.0
+	if _action != "":
+		_action_t += delta
+		p = clampf(_action_t / _action_len, 0.0, 1.0)
+		if p >= 1.0:
+			_action = ""
+	var w := sin(p * PI) if _action != "" else 0.0
+	var arm_x := [0.0, 0.0]
+	var arm_z := [-0.18, 0.18]
+	var lift := 0.0
+	match _action:
+		"type":
+			for i in 2:
+				arm_x[i] = (-0.6 + sin(t * 16.0 + i * 1.7) * 0.1) * w
+			head_x += 0.18 * w
+		"sip":
+			arm_x[1] = -2.1 * w
+			arm_z[1] = 0.18 - 0.5 * w
+			head_x -= 0.12 * w
+		"read":
+			arm_x[1] = -1.1 * w
+			head_x += 0.2 * w
+		"stretch":
+			arm_z = [-0.18 - 2.5 * w, 0.18 + 2.5 * w]
+			lift = 0.03 * w
+		"nod":
+			head_x += sin(p * PI * 4.0) * 0.16
+		"scratch":
+			arm_x[0] = -2.4 * w
+			arm_z[0] = -0.18 - 0.7 * w
+			head_x += 0.08 * w
+		"wave":
+			arm_z[0] = -0.18 - (1.9 + sin(t * 9.0) * 0.25) * w
+		"point":
+			arm_x[1] = -1.4 * w
+		"look":
+			yaw = 0.6 * sin(p * TAU)
+			_yaw = lerpf(_yaw, yaw, minf(1.0, delta * 4.0))
+	# Talking adds a small gesture with the free hand.
+	arm_x[0] += -sin(_talk * PI * 2.0) * 0.35 * _talk
 	for i in _arms.size():
-		_arms[i].rotation.x = sin(t * 1.1 + i) * 0.04 - sin(_talk * PI * 2.0) * 0.25 * _talk * float(i)
+		_arms[i].rotation = Vector3(arm_x[i], 0.0, arm_z[i])
+	_body.position.y = lift
+	_head.rotation.x = head_x
+	_head.rotation.y = _yaw

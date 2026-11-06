@@ -686,11 +686,12 @@ static func _pps_office(root: Node3D) -> Dictionary:
 		"npcs": {"lead": lead, "peer": peer},
 		"hotspots": [],
 		# Work spots for the career mode: where to stand, where the pin floats,
-		# and where a visitor waits (position, facing).
+		# and where a visitor waits (position, facing): visitors stand on the room
+		# side of the counter and behind the table so the camera never cuts them off.
 		"spots": {
 			"desk": {"name": "내 자리", "stand": desk_pos + Vector3(1.25, 0, 0.05), "anchor": desk_pos + Vector3(-0.2, 1.45, -0.1)},
-			"counter": {"name": counter_name, "stand": counter + Vector3(0.75, 0, 0), "anchor": counter + Vector3(0, 1.55, 0), "visitor": [counter + Vector3(-0.65, 0, 0), PI * 0.5]},
-			"visit": {"name": "응접 테이블" if theme == 1 else "업체 상담석", "stand": visit + Vector3(-0.75, 0, 0), "anchor": visit + Vector3(0, 1.4, 0), "visitor": [visit + Vector3(0.75, 0, 0), -PI * 0.5]},
+			"counter": {"name": counter_name, "stand": counter + Vector3(0.75, 0, 0), "anchor": counter + Vector3(0, 1.55, 0), "visitor": [counter + Vector3(0.05, 0, -0.85), 0.72]},
+			"visit": {"name": "응접 테이블" if theme == 1 else "업체 상담석", "stand": visit + Vector3(-0.75, 0, 0), "anchor": visit + Vector3(0, 1.4, 0), "visitor": [visit + Vector3(0.05, 0, -0.72), -0.8]},
 			"door": {"name": "출입구" if theme != 3 else "현장 출입구", "stand": door + Vector3(-0.6, 0, 0), "anchor": door + Vector3(-0.2, 1.95, 0)},
 			"peer": {"name": "최 주무관 자리", "stand": Vector3(-2.55, 0, -0.5), "anchor": Vector3(-2.55, 1.3, -0.95)},
 			"lead": {"name": "%s 자리" % office_lead, "stand": Vector3(0.6, 0, -1.05), "anchor": Vector3(0.6, 1.35, -1.55)},
