@@ -602,7 +602,8 @@ static func _pps_office(root: Node3D) -> Dictionary:
 	var lead_image: String = ["lead_park", "lead_han", "lead_oh"][clampi(theme, 1, 3) - 1]
 	var lead := _npc(root, office_lead.split(" ")[-1], Vector3(0.6, 0, -2.5), lead_look[0], lead_look[1], 0.0, lead_look[2], lead_image)
 	Props.desk(root, Vector3(-2.55, 0, -1.3), 1.5, 0.8, Color("#b38c63"))
-	Props.monitor(root, Vector3(-2.3, 0.72, -1.4), Color("#6fa0b8"), "", PI - 0.4)
+	# Off to the side so the colleague (and her coffee breaks) stays in view.
+	Props.monitor(root, Vector3(-3.05, 0.72, -1.5), Color("#6fa0b8"), "", PI - 0.9)
 	var peer := _npc(root, "최 주무관", Vector3(-2.55, 0, -1.95), Color("#6b7d5a"), Color("#231f1d"), 0.0, Color("#d8b25a"), "peer_choi")
 	# Right wall and the left nook change with the place.
 	match theme:

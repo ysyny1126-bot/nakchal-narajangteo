@@ -90,6 +90,11 @@ func setup(data: Dictionary) -> void:
 	set_status("open")
 
 
+## Where the floating title sits in the world (for keeping speech bubbles off it).
+func tag_position() -> Vector3:
+	return _tag.global_position
+
+
 func set_status(value: String) -> void:
 	status = value
 	_refresh()

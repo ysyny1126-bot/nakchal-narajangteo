@@ -30,6 +30,11 @@ const KIND_COLOR := {"careful": Color("#3f8f6a"), "quick": Color("#3f78a8"), "ea
 ## Which office spot holds a card of each type.
 const SPOT_OF := {"work": "desk", "civil": "counter", "lure": "visit", "field": "door", "bonus": "peer"}
 const VISITORS := {"counter": ["민원인", Color("#6b8f5a"), "visitor_civil"], "visit": ["업체 직원", Color("#5d5f66"), "visitor_vendor"]}
+## Who comes to the counter, by the card's counterpart: [look, name, hello, mood].
+const COUNTER_GUESTS := {
+	"school": ["visitor_civil", "학교 행정실", "저기요~", "worry"],
+	"vendor": ["visitor_staff", "업체 담당자", "저기요!", "worry"],
+}
 const NEAR := 0.85
 ## What a visitor says on arrival: line and mood.
 const VISITOR_HELLO := {"counter": ["저기요~", "worry"], "visit": ["ㅎㅎ", "sly"]}
@@ -73,6 +78,8 @@ var _stamina: Control
 var _notes: Label
 var _skills: HFlowContainer
 var _quests: VBoxContainer
+## Side quests (challenge, terms, audit) stay folded unless opened.
+var _quests_open := false
 var _overlay: Control
 var _photo: Control
 var _markers := {}
@@ -91,6 +98,8 @@ var _talk_height := 1.62
 ## The counter phone rings while only phone calls wait there.
 var _phone_ringing := false
 var _ring_t := 0.0
+## When each spot last greeted the employee (msec), so greetings don't repeat.
+var _greeted := {}
 var _paper: Control
 var _paper_card: PanelContainer
 var _paper_tiles: Array = []
@@ -472,12 +481,28 @@ func _refresh_quests() -> void:
 	var today_total := int(state.today_total)
 	if state.phase == "day":
 		_quest_row("오늘", "업무 카드 모두 처리하기", float(int(state.today_done)) / maxf(today_total, 1), "%d / %d" % [int(state.today_done), today_total], "실적")
-		var clean := int(state.lapse_today) == 0
-		_quest_row("도전", "오늘 타협 없이 퇴근하기", 1.0 if clean and int(state.today_done) >= today_total else 0.0, "진행 중" if clean else "실패", "+50P", not clean)
 		var memo := str(state.get("memo_today", ""))
 		if memo != "":
 			var got: bool = (state.get("memos", []) as Array).has(memo)
 			_quest_row("메모", "사무실에 떨어진 메모 찾기", 1.0 if got else 0.0, "찾았어요!" if got else "어딘가에…", "상식")
+	# The rest folds behind one small toggle so the panel stays short.
+	var more := Button.new()
+	more.flat = true
+	more.focus_mode = Control.FOCUS_NONE
+	more.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	more.text = ("▾ 접기" if _quests_open else "▸ 다른 퀘스트 %d개" % (3 if state.phase == "day" else 2))
+	more.add_theme_font_size_override("font_size", UI.px(11))
+	more.add_theme_color_override("font_color", UI.INK_SOFT)
+	more.add_theme_color_override("font_hover_color", UI.ORANGE)
+	more.pressed.connect(func() -> void:
+		_quests_open = not _quests_open
+		_refresh_quests())
+	_quests.add_child(more)
+	if not _quests_open:
+		return
+	if state.phase == "day":
+		var clean := int(state.lapse_today) == 0
+		_quest_row("도전", "오늘 타협 없이 퇴근하기", 1.0 if clean and int(state.today_done) >= today_total else 0.0, "진행 중" if clean else "실패", "+50P", not clean)
 	var terms := _ep_terms()
 	var seen := 0
 	for id in terms:
@@ -650,6 +675,7 @@ func _process(delta: float) -> void:
 		if best != "":
 			_markers[best].set_near(true)
 			game.sound.play("move")
+			_greet(best)
 
 
 ## A gentle follow camera that keeps the whole office readable left of the ID panel.
@@ -723,20 +749,28 @@ func _sync_spots() -> void:
 	if _phone_ringing and not was_ringing:
 		_ring_t = 0.8
 	for id in VISITORS:
-		var want: bool = groups.has(id) and spots.has(id) and spots[id].has("visitor")
-		if id == "counter" and _phone_ringing:
-			want = false
+		var waiting: Array = (groups.get(id, []) as Array).filter(func(cid: String) -> bool: return not _is_call(cid))
+		var want: bool = not waiting.is_empty() and spots.has(id) and spots[id].has("visitor")
+		# The person at the counter matches the first card waiting there.
+		var guest: Array = [VISITORS[id][2], VISITORS[id][0], VISITOR_HELLO[id][0], VISITOR_HELLO[id][1]]
+		if id == "counter" and want:
+			var org := str(Career.card(str(waiting[0])).get("org", ""))
+			guest = COUNTER_GUESTS.school if ("학교" in org or "행정실" in org or "기관" in org) else COUNTER_GUESTS.vendor
 		var has := _visitors.has(id) and is_instance_valid(_visitors[id])
+		if has and want and _visitors[id].get_meta("look", "") != guest[0]:
+			_visitors[id].queue_free()
+			has = false
 		if want and not has:
 			var npc := Npc.new()
-			if not npc.build_person(VISITORS[id][0], VISITORS[id][2]):
+			npc.set_meta("look", guest[0])
+			if not npc.build_person(guest[1], guest[0]):
 				npc.build(VISITORS[id][0], VISITORS[id][1], Color("#2a2522"), Color("#eac2a0"), Color("#d8b25a"))
 			npc.position = spots[id].visitor[0]
 			npc.rotation.y = spots[id].visitor[1]
 			_stage.add_child(npc)
 			_visitors[id] = npc
 			npc.watch = game.player
-			npc_say(npc, VISITOR_HELLO[id][0], VISITOR_HELLO[id][1])
+			npc_say(npc, guest[2], guest[3])
 		elif not want and has:
 			_visitors[id].queue_free()
 			_visitors.erase(id)
@@ -1958,36 +1992,146 @@ func _earn(id: String) -> bool:
 
 
 func _quiz_start() -> void:
-	_quiz = {"index": 0, "correct": 0}
+	_quiz = {"index": 0, "correct": 0, "marks": []}
 	_quiz_question()
 
 
 func _quiz_question() -> void:
-	var qs: Array = Glossary.QUIZ[int(state.ep)]
-	var q: Dictionary = qs[int(_quiz.index)]
-	var buttons := []
-	for i in (q.options as Array).size():
-		buttons.append({"label": str(q.options[i]), "id": "c_quiz_answer:%d" % i, "primary": false})
-	game.modal.open({"kicker": "용어 퀴즈 %d / %d" % [int(_quiz.index) + 1, qs.size()], "accent": UI.BLUE, "title": q.q, "dismissable": false, "buttons": buttons})
+	_quiz_card(-1)
+	say("마지막 관문! 이번 달 배운 걸 확인해요.")
 
 
 func _quiz_answer(choice: int) -> void:
 	var qs: Array = Glossary.QUIZ[int(state.ep)]
 	var q: Dictionary = qs[int(_quiz.index)]
 	var right := choice == int(q.answer)
+	(_quiz.marks as Array).append(right)
 	if right:
 		_quiz.correct = int(_quiz.correct) + 1
 		_apply_gain({"perf": 1})
+	_quiz_card(choice)
 	_quiz.index = int(_quiz.index) + 1
-	var last := int(_quiz.index) >= qs.size()
-	game.modal.open({"kicker": "정답!" if right else "아쉬워요", "accent": UI.GREEN if right else UI.RED, "title": "정답: %s" % q.options[int(q.answer)], "body": q.explain, "deltas": [{"label": "실적", "value": "+1", "good": true}] if right else [], "dismissable": false, "buttons": [{"label": "결과 보기" if last else "다음 문제", "id": "c_promote" if last else "c_quiz_next"}]})
-	game.sound.play("success" if right else "fail")
+
+
+## The quiz on a work-card sheet: progress dots, the question and three answers.
+## After an answer (picked >= 0) the right one is stamped and Dali explains.
+func _quiz_card(picked: int) -> void:
+	var qs: Array = Glossary.QUIZ[int(state.ep)]
+	var q: Dictionary = qs[int(_quiz.index)]
+	var answered := picked >= 0
+	var right := answered and picked == int(q.answer)
+	var v := _paper_open(UI.BLUE, false)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	v.add_child(head)
+	head.add_child(UI.chip("용어 퀴즈 %d / %d" % [int(_quiz.index) + 1, qs.size()], UI.BLUE, Color.WHITE, 11))
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(gap)
+	var marks: Array = _quiz.marks
+	for i in qs.size():
+		var dot := Control.new()
+		dot.custom_minimum_size = Vector2(18, 18)
+		var col := Color("#e2dccf") if i >= marks.size() else (UI.GREEN if marks[i] else UI.RED)
+		dot.draw.connect(func() -> void: dot.draw_circle(Vector2(9, 9), 7.0, col))
+		head.add_child(dot)
+	v.add_child(UI.wrap(UI.label("Q. " + str(q.q), 21, UI.INK, true)))
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 8)
+	v.add_child(list)
+	for i in (q.options as Array).size():
+		var good := i == int(q.answer)
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(600, 50)
+		var edge := Color("#e4dccb")
+		var fill := Color("#ffffff")
+		if answered and good:
+			edge = UI.GREEN
+			fill = Color("#eef6ee")
+		elif answered and i == picked:
+			edge = UI.RED
+			fill = Color("#fbeeec")
+		for m in ["normal", "hover", "pressed", "disabled", "focus"]:
+			var st := UI.panel(fill if m != "hover" else Color("#f2f7fb"), edge if m != "hover" else UI.BLUE, 10, 12, 2)
+			b.add_theme_stylebox_override(m, st)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		row.offset_left = 12
+		row.offset_right = -12
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(row)
+		var cap := UI.keycap(str(i + 1))
+		cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(cap)
+		var l := UI.label(str(q.options[i]), 15, UI.INK if not answered or good or i == picked else UI.MUTED, true)
+		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		if answered and good:
+			var seal := _seal("정답", UI.GREEN, 40, 12)
+			seal.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.add_child(seal)
+			_slam(seal, UI.GREEN, 0.05, _paper_card if right else null)
+		for child in [row, cap, l]:
+			child.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if answered:
+			b.disabled = true
+		else:
+			b.pressed.connect(_paper_choice.bind("c_quiz_answer:%d" % i))
+			b.mouse_entered.connect(func() -> void: game.sound.play("move"))
+			_paper_tiles.append([b, "c_quiz_answer:%d" % i])
+		list.add_child(b)
+	if not answered:
+		return
+	# Dali's one-line explanation, then the way on.
+	var band := PanelContainer.new()
+	band.add_theme_stylebox_override("panel", UI.panel(Color("#fff4d2"), Color("#f0dca0"), 10, 10))
+	var brow := HBoxContainer.new()
+	brow.add_theme_constant_override("separation", 10)
+	band.add_child(brow)
+	var face := DaliIcon.new()
+	face.custom_minimum_size = Vector2(44, 44)
+	brow.add_child(face)
+	face.react("happy" if right else "oops")
+	var ex := UI.wrap(UI.label(str(q.explain), 14, UI.INK, true))
+	ex.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ex.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	brow.add_child(ex)
+	v.add_child(band)
+	var last := int(_quiz.index) + 1 >= qs.size()
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 6)
+	v.add_child(foot)
+	if right:
+		foot.add_child(UI.chip("실적 +1", Color("#e3f0e4"), UI.GREEN.darkened(0.2), 13))
+	var g2 := Control.new()
+	g2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(g2)
+	var next_id := "c_promote" if last else "c_quiz_next"
+	var ok := Button.new()
+	ok.text = ("결과 보기" if last else "다음 문제") + "   Enter"
+	ok.focus_mode = Control.FOCUS_NONE
+	ok.custom_minimum_size = Vector2(0, 42)
+	UI.style_button(ok, true, UI.BLUE)
+	ok.pressed.connect(_paper_choice.bind(next_id))
+	foot.add_child(ok)
+	_paper_ok = next_id
+	if right:
+		_dali.react("happy")
+		say("정답! ^^")
+	else:
+		_dali.react("oops")
+		say("괜찮아요, 해설을 같이 봐요.")
+		game.sound.play("fail")
 
 
 # --- Promotion / ending ------------------------------------------------------------------
 
 func _promote() -> void:
 	game.modal.close()
+	_paper_close()
 	var ep := int(state.ep)
 	var grade := Career.grade(int(state.ep_perf), int(state.ep_mistakes), (state.lapses as Array).size())
 	if ep == 1 and int(_quiz.get("correct", 0)) >= 2:
@@ -2196,6 +2340,7 @@ func _final() -> void:
 		row.add_child(btn)
 	root.add_child(row)
 	game.sound.play_music("ending" if ending.id != "relearn" else "ending_sad")
+	game.sound.set_ambience(false)
 	game.sound.play("success")
 	game.narami.play_action("cheer")
 	game.dali.play_action("cheer")
@@ -2509,7 +2654,7 @@ func _update_talk(delta: float) -> void:
 				# Stay under Dali's guide bar and left of the ID panel.
 				pos.x = clampf(pos.x, 8.0, PANEL_X - 16.0 - _talk_box.size.x)
 				pos.y = maxf(pos.y, 112.0)
-				_talk_box.position = pos
+				_talk_box.position = _clear_of_markers(pos, cam)
 		_talk_box.visible = show
 	if busy or not state.phase in ["day", "boss_wait"]:
 		return
@@ -2544,9 +2689,62 @@ func _update_talk(delta: float) -> void:
 		npc_say(pick[1], line[0], line[1])
 
 
+## Nudges a bubble so it never sits on a spot marker's title: above it if
+## there is room under the guide bar, otherwise beside it.
+func _clear_of_markers(pos: Vector2, cam: Camera3D) -> Vector2:
+	var box := Rect2(pos, _talk_box.size)
+	for id in _markers:
+		var m: Node3D = _markers[id]
+		if not m.visible or str(m.title) == "":
+			continue
+		var tag_at: Vector3 = m.tag_position()
+		if cam.is_position_behind(tag_at):
+			continue
+		var c := cam.unproject_position(tag_at)
+		var w := 14.0 * str(m.title).length() + 30.0
+		var tag := Rect2(c - Vector2(w * 0.5, 16.0), Vector2(w, 32.0))
+		if not box.grow(4.0).intersects(tag):
+			continue
+		var up := tag.position.y - box.size.y - 6.0
+		if up >= 112.0:
+			box.position.y = up
+		elif box.get_center().x < tag.get_center().x:
+			box.position.x = tag.position.x - box.size.x - 6.0
+		else:
+			box.position.x = tag.end.x + 6.0
+	box.position.x = clampf(box.position.x, 8.0, PANEL_X - 16.0 - box.size.x)
+	return box.position
+
+
+## Walking up to someone: they say a word and Narami answers a moment later.
+const GREETINGS := {"lead": ["오~", "넵!"], "peer": ["ㅎㅎ", "^^"], "counter": ["저기요~", "네~!"], "visit": ["ㅎㅎ", "…네"]}
+
+
+func _greet(spot: String) -> void:
+	if not GREETINGS.has(spot):
+		return
+	var npcs: Dictionary = game.layout.get("npcs", {})
+	var who: Node3D = _visitors.get(spot) if spot in ["counter", "visit"] else npcs.get(spot)
+	if not is_instance_valid(who):
+		return
+	var now := Time.get_ticks_msec()
+	if now - int(_greeted.get(spot, -60000)) < 20000:
+		return
+	_greeted[spot] = now
+	var pair: Array = GREETINGS[spot]
+	npc_say(who, pair[0], "sly" if spot == "visit" else "happy", 1.4)
+	who.play("nod", 1.2)
+	get_tree().create_timer(1.3).timeout.connect(func() -> void:
+		if is_instance_valid(game.player) and can_walk():
+			npc_say(game.player, pair[1], "calm", 1.6, 1.05)
+			game.narami.play_action("talk"))
+	_chatter = maxf(_chatter, 6.0)
+
+
 ## True for cards that come in by phone (the org line says so).
 func _is_call(id: String) -> bool:
-	return "전화" in str(Career.card(id).get("org", ""))
+	var c: Dictionary = Career.card(id)
+	return "전화" in str(c.get("org", "")) or "전화" in str(c.get("title", ""))
 
 
 ## One ring: the handset jiggles, a bubble and a soft bell.

@@ -519,6 +519,7 @@ func _close_modal() -> void:
 func _show_title() -> void:
 	game_active = false
 	ending_hold = false
+	sound.set_ambience(false)
 	modal.close()
 	hud.visible = false
 	for child in title_layer.get_children():
@@ -2815,6 +2816,7 @@ func _career_stage() -> void:
 	cine_cam.v_offset = -0.25
 	cine_cam.current = true
 	sound.play_music(["pps_office", "showroom", "warehouse"][RoomBuilder.office_theme - 1])
+	sound.set_ambience(true)
 
 
 func _career_home() -> void:

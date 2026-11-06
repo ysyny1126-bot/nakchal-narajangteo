@@ -9,6 +9,9 @@ const MUSIC_RATE := 16000
 var _sfx := {}
 var _players: Array[AudioStreamPlayer] = []
 var _music: AudioStreamPlayer
+## A quiet office bed (typing, printer, room hum) under the music.
+var _ambience: AudioStreamPlayer
+var _ambience_on := false
 var _music_cache := {}
 var _pending := {}
 var _current := ""
@@ -27,6 +30,9 @@ func _ready() -> void:
 	_music = AudioStreamPlayer.new()
 	_music.volume_db = -17.0
 	add_child(_music)
+	_ambience = AudioStreamPlayer.new()
+	_ambience.volume_db = _ambience_db()
+	add_child(_ambience)
 	_sfx = {
 		"select": _notes([[1046.5, 0.0, 0.07, 0.32]]),
 		"move": _notes([[880.0, 0.0, 0.05, 0.18]]),
@@ -93,6 +99,25 @@ func _start_music(stream: AudioStreamWAV) -> void:
 	tween.tween_property(_music, "volume_db", _music_db(), 1.2)
 
 
+## Starts or stops the office ambience (generated once, then looped).
+func set_ambience(on: bool) -> void:
+	if on == _ambience_on:
+		return
+	_ambience_on = on
+	if not on or muted:
+		_ambience.stop()
+		return
+	if _ambience.stream == null:
+		_ambience.stream = _office_bed()
+	_ambience.volume_db = -50.0
+	_ambience.play()
+	create_tween().tween_property(_ambience, "volume_db", _ambience_db(), 2.0)
+
+
+func _ambience_db() -> float:
+	return -27.0 + linear_to_db(maxf(sfx_volume, 0.001) / 0.8)
+
+
 func _music_db() -> float:
 	return -17.0 + linear_to_db(maxf(music_volume, 0.001) / 0.8)
 
@@ -104,6 +129,8 @@ func set_volumes(music: float, sfx: float) -> void:
 		_music.volume_db = _music_db()
 	for p in _players:
 		p.volume_db = -7.0 + linear_to_db(maxf(sfx_volume, 0.001) / 0.8)
+	if is_instance_valid(_ambience) and _ambience.playing:
+		_ambience.volume_db = _ambience_db()
 
 
 # --- Synthesis -----------------------------------------------------------
@@ -144,6 +171,46 @@ func _notes(notes: Array, grit: float = 0.0) -> AudioStreamWAV:
 			var w := sin(TAU * f * t) + 0.25 * sin(TAU * f * 2.0 * t) + grit * sin(TAU * f * 3.0 * t)
 			samples[start + i] += w * env * amp
 	return _wav(samples, RATE)
+
+
+## 12 seconds of office: bursts of soft key clicks from a desk or two, one
+## printer pass, and a low room hum. Loops seamlessly (the hum is periodic).
+func _office_bed() -> AudioStreamWAV:
+	var rate := MUSIC_RATE
+	var length := 12.0
+	var n := int(length * rate)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2611
+	# Room hum: two low tones that complete whole cycles in 12 s.
+	for i in n:
+		var t := float(i) / rate
+		out[i] = sin(TAU * 60.0 * t) * 0.012 + sin(TAU * 120.0 * t) * 0.006
+	# Typing bursts: short filtered clicks.
+	for burst in [[0.6, 2.2, 0.9], [4.1, 1.4, 0.6], [6.8, 2.6, 0.8], [10.2, 1.2, 0.5]]:
+		var at: float = burst[0]
+		var end: float = at + burst[1]
+		while at < end:
+			var start := int(at * rate)
+			var amp := 0.05 * float(burst[2]) * rng.randf_range(0.6, 1.0)
+			var low := 0.0
+			for k in int(0.012 * rate):
+				if start + k >= n:
+					break
+				var env := exp(-float(k) / (0.0025 * rate))
+				low = lerpf(low, rng.randf_range(-1.0, 1.0), 0.35)
+				out[start + k] += low * env * amp
+			at += rng.randf_range(0.08, 0.2)
+	# Printer pass: a soft rising whir with a little rattle.
+	var p0 := int(7.6 * rate)
+	var plen := int(1.8 * rate)
+	for k in plen:
+		var t := float(k) / rate
+		var env := sin(PI * float(k) / plen)
+		var f := 180.0 + 40.0 * t
+		out[p0 + k] += (sin(TAU * f * t) * 0.02 + rng.randf_range(-1.0, 1.0) * 0.006) * env
+	return _wav(out, rate, true)
 
 
 func _swoosh() -> AudioStreamWAV:

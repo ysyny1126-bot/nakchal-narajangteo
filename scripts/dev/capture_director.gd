@@ -162,8 +162,16 @@ func _career_shots() -> void:
 	await _seconds(4.0)
 	await _shot("career_08_audit")
 	cs._on_choice("c_quiz", {})
+	await _wait(30)
+	await _shot("career_08b_quiz")
+	# First answer wrong to show Dali's explanation, the rest right.
+	var quiz: Array = preload("res://scripts/core/glossary.gd").QUIZ[1]
 	for i in range(3):
-		cs._on_choice("c_quiz_answer:%d" % int(preload("res://scripts/core/glossary.gd").QUIZ[1][i].answer), {})
+		var pick := (int(quiz[i].answer) + 1) % 3 if i == 0 else int(quiz[i].answer)
+		cs._on_choice("c_quiz_answer:%d" % pick, {})
+		if i == 0:
+			await _wait(40)
+			await _shot("career_08c_quiz_answer")
 		cs._on_choice("c_quiz_next" if i < 2 else "c_promote", {})
 	await _wait(60)
 	await _shot("career_09_promotion")

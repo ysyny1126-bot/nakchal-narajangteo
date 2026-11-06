@@ -35,6 +35,12 @@ const LOOKS := {
 		"pants": Color("#8a6646"), "shoes": Color("#f1efe9"), "prop": "envelope", "bag": true,
 		"idle": ["scratch", "look"],
 	},
+	"visitor_staff": {
+		"hair": "short", "hair_color": Color("#2a221e"),
+		"top": "jacket", "jacket": Color("#3d5a80"), "shirt": Color("#f4f1ea"), "tie": Color(0, 0, 0, 0),
+		"pants": Color("#3a3f4a"), "shoes": Color("#2a2424"), "prop": "folder", "lanyard": true,
+		"idle": ["scratch", "look", "nod"],
+	},
 	"visitor_vendor": {
 		"hair": "slick", "hair_color": Color("#2f2420"),
 		"top": "suit", "jacket": Color("#5c585a"), "shirt": Color("#f4f1ea"), "tie": Color("#e07a35"),
