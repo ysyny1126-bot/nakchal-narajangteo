@@ -97,9 +97,10 @@ static func _room_sign(root: Node3D, size: Vector2, text: String, plate: Color, 
 	label.pixel_size = 0.0046
 
 
-static func _npc(root: Node3D, person: String, position: Vector3, jacket: Color, hair: Color, facing: float = 0.0, tie: Color = Color("#c9573f")) -> Node3D:
+static func _npc(root: Node3D, person: String, position: Vector3, jacket: Color, hair: Color, facing: float = 0.0, tie: Color = Color("#c9573f"), image: String = "") -> Node3D:
 	var npc := Npc.new()
-	npc.build(person, jacket, hair, Color("#eac2a0"), tie)
+	if not npc.build_person(person, image):
+		npc.build(person, jacket, hair, Color("#eac2a0"), tie)
 	npc.position = position
 	npc.rotation.y = facing
 	root.add_child(npc)
@@ -598,10 +599,11 @@ static func _pps_office(root: Node3D) -> Dictionary:
 	Props.monitor(root, Vector3(1.05, 0.72, -1.95), Color("#4b7896"), "", PI + 0.3)
 	Props.document(root, Vector3(0.25, 0.73, -1.8), Vector2(0.36, 0.26), Color("#24435a"), "", 0.2, 3)
 	var lead_look: Array = [[Color("#2f4f6a"), Color("#3a3330"), Color("#e0c46a")], [Color("#3c6f6a"), Color("#2a2420"), Color("#e07a35")], [Color("#5e6f8a"), Color("#4a3b30"), Color("#e2b43c")]][clampi(theme, 1, 3) - 1]
-	var lead := _npc(root, office_lead.split(" ")[-1], Vector3(0.6, 0, -2.5), lead_look[0], lead_look[1], 0.0, lead_look[2])
+	var lead_image: String = ["lead_park", "lead_han", "lead_oh"][clampi(theme, 1, 3) - 1]
+	var lead := _npc(root, office_lead.split(" ")[-1], Vector3(0.6, 0, -2.5), lead_look[0], lead_look[1], 0.0, lead_look[2], lead_image)
 	Props.desk(root, Vector3(-2.55, 0, -1.3), 1.5, 0.8, Color("#b38c63"))
 	Props.monitor(root, Vector3(-2.3, 0.72, -1.4), Color("#6fa0b8"), "", PI - 0.4)
-	var peer := _npc(root, "최 주무관", Vector3(-2.55, 0, -1.95), Color("#6b7d5a"), Color("#231f1d"), 0.0, Color("#d8b25a"))
+	var peer := _npc(root, "최 주무관", Vector3(-2.55, 0, -1.95), Color("#6b7d5a"), Color("#231f1d"), 0.0, Color("#d8b25a"), "peer_choi")
 	# Right wall and the left nook change with the place.
 	match theme:
 		2:

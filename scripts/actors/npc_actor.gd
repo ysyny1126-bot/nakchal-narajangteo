@@ -1,13 +1,21 @@
 extends Node3D
 
 ## Office workers in the same soft, outlined style as the mascots.
+## build_person() makes the big-head chibi people from person_look.gd (the
+## user's character sheet); build() is the older plain worker for other rooms.
 
 const Mascot = preload("res://scripts/actors/mascot_actor.gd")
 const Props = preload("res://scripts/world/props.gd")
+const Look = preload("res://scripts/actors/person_look.gd")
+
+const INK := Color("#22252b")
+const FULL_U := Vector2(-PI, PI)
+const FULL_V := Vector2(-PI * 0.5, PI * 0.5)
 
 var display_name := ""
 var _body: Node3D
 var _head: Node3D
+var _arms: Array[Node3D] = []
 var _talk := 0.0
 var _seed := 0.0
 
@@ -48,6 +56,211 @@ func build(person_name: String, jacket: Color, hair: Color, skin: Color = Color(
 	Props.add_blob_shadow(self, 0.32)
 
 
+## A chibi person from person_look.gd; returns false when the id has no look.
+func build_person(person_name: String, id: String) -> bool:
+	if not Look.has(id):
+		return false
+	var k: Dictionary = Look.get_look(id)
+	display_name = person_name
+	name = "NPC_" + person_name
+	_seed = randf() * 6.0
+	_body = Node3D.new()
+	# A touch taller than the mascots so faces clear the desk monitors.
+	_body.scale = Vector3.ONE * 1.2
+	add_child(_body)
+	var wide := float(k.get("width", 1.0))
+	var skin := Mascot.soft_mat(Look.SKIN)
+	var jacket := Mascot.soft_mat(k.jacket)
+	# Legs and shoes
+	for side in [-1.0, 1.0]:
+		_mesh(_body, Mascot.patch_mesh(Vector3(0.068 * wide, 0.17, 0.072), 0.15), Vector3(side * 0.078 * wide, 0.21, 0), Mascot.soft_mat(k.pants))
+		_mesh(_body, Mascot.patch_mesh(Vector3(0.07, 0.045, 0.115)), Vector3(side * 0.085 * wide, 0.045, 0.035), Mascot.soft_mat(k.shoes))
+	# Torso: the outfit, then shirt and tie in the opening.
+	var tc := Vector3(0, 0.5, 0)
+	var td := Vector3(0.165 * wide, 0.2, 0.125)
+	var egg := -0.06
+	_mesh(_body, Mascot.patch_mesh(td, egg), tc, jacket)
+	match str(k.top):
+		"suit", "jacket":
+			_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(-0.34, 0.34), Vector2(0.05, 1.2), 0.004, Vector2i(8, 10)), tc, Mascot.soft_mat(k.shirt, false))
+			for side in [-1.0, 1.0]:
+				_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(side * 0.34, side * 0.5) if side > 0 else Vector2(-0.5, -0.34), Vector2(0.3, 1.15), 0.008, Vector2i(3, 8)), tc, Mascot.soft_mat(Color(k.jacket).darkened(0.18), false))
+			if Color(k.tie).a > 0.0:
+				_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(-0.08, 0.08), Vector2(-0.35, 1.1), 0.01, Vector2i(3, 10)), tc, Mascot.soft_mat(k.tie, false))
+			for row in [0.0, -0.3]:
+				_mesh(_body, Mascot.patch_mesh(Vector3(0.012, 0.012, 0.006)), tc + Mascot.surface_point(td, egg, 0.42, row) + Vector3(0, 0, 0.006), Mascot.soft_mat(Color("#2a2420"), false))
+		"vest":
+			_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(-0.22, 0.22), Vector2(0.55, 1.3), 0.004, Vector2i(6, 6)), tc, Mascot.soft_mat(k.shirt, false))
+			_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(-2.5, 2.5), Vector2(-1.0, 0.75), 0.014, Vector2i(24, 10)), tc, Mascot.soft_mat(k.vest))
+			for band in [Vector2(-0.35, -0.22), Vector2(0.15, 0.28)]:
+				_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(-2.5, 2.5), band, 0.02, Vector2i(24, 2)), tc, Mascot.soft_mat(Color("#c9ccd0"), false, 0.3))
+		"cardigan":
+			_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(-0.22, 0.22), Vector2(-0.2, 1.2), 0.004, Vector2i(6, 10)), tc, Mascot.soft_mat(k.shirt, false))
+			for row in [0.35, 0.0, -0.35]:
+				_mesh(_body, Mascot.patch_mesh(Vector3(0.014, 0.014, 0.008)), tc + Mascot.surface_point(td, egg, 0.26, row) + Vector3(0, 0, 0.008), Mascot.soft_mat(Color("#e2b43c"), false))
+		"sweater":
+			_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(-0.3, 0.3), Vector2(0.7, 1.25), 0.004, Vector2i(6, 4)), tc, Mascot.soft_mat(k.shirt, false))
+			_mesh(_body, Mascot.patch_mesh(td, egg, FULL_U, Vector2(-1.1, -0.85), 0.01, Vector2i(24, 2)), tc, Mascot.soft_mat(Color(k.jacket).darkened(0.08), false))
+	if k.get("lanyard", false):
+		_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(-0.2, -0.16), Vector2(0.1, 1.15), 0.012, Vector2i(2, 6)), tc, Mascot.soft_mat(Color("#4a7fb8"), false))
+		_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(0.16, 0.2), Vector2(0.1, 1.15), 0.012, Vector2i(2, 6)), tc, Mascot.soft_mat(Color("#4a7fb8"), false))
+		_mesh(_body, Mascot.patch_mesh(Vector3(0.035, 0.045, 0.008)), tc + Mascot.surface_point(td, egg, 0.0, 0.0) + Vector3(0, -0.01, 0.016), Mascot.soft_mat(Color("#fbf8f0")))
+	if k.get("bag", false):
+		_mesh(_body, Mascot.patch_mesh(td, egg, Vector2(-0.5, -0.38), Vector2(-0.6, 1.3), 0.014, Vector2i(2, 10)), tc, Mascot.soft_mat(Color("#3a2c28"), false))
+		_mesh(_body, Mascot.patch_mesh(Vector3(0.07, 0.08, 0.04)), Vector3(-0.21 * wide, 0.38, 0.05), Mascot.soft_mat(Color("#3a2c28")))
+	# Arms hang from the shoulders; the right hand holds the prop.
+	for side in [-1.0, 1.0]:
+		var arm := Node3D.new()
+		arm.position = Vector3(side * 0.19 * wide, 0.62, 0.0)
+		arm.rotation.z = side * 0.18
+		_body.add_child(arm)
+		_mesh(arm, Mascot.patch_mesh(Vector3(0.058, 0.13, 0.06)), Vector3(side * 0.02, -0.11, 0.0), jacket)
+		_mesh(arm, Mascot.patch_mesh(Vector3(0.045, 0.045, 0.045)), Vector3(side * 0.025, -0.25, 0.02), skin)
+		_arms.append(arm)
+	_prop(str(k.prop), Vector3(0.24 * wide, 0.36, 0.08))
+	# Head
+	_head = Node3D.new()
+	_head.position = Vector3(0, 0.9, 0)
+	_body.add_child(_head)
+	var hd := Vector3(0.235, 0.225, 0.215)
+	_mesh(_head, Mascot.patch_mesh(hd, 0.0, FULL_U, FULL_V, 0.0, Vector2i(32, 22)), Vector3.ZERO, skin)
+	for side in [-1.0, 1.0]:
+		_mesh(_head, Mascot.patch_mesh(Vector3(0.04, 0.055, 0.035)), Vector3(side * 0.232, -0.02, 0.0), skin)
+		if k.get("earrings", false):
+			_mesh(_head, Mascot.patch_mesh(Vector3(0.012, 0.012, 0.012)), Vector3(side * 0.236, -0.08, 0.02), Mascot.soft_mat(Color("#f7f2e6"), false, 0.2))
+	_face(hd, k)
+	_hair(hd, k)
+	Props.add_blob_shadow(self, 0.3)
+	return true
+
+
+func _face(hd: Vector3, k: Dictionary) -> void:
+	for side in [-1.0, 1.0]:
+		# Big dark eyes with a catchlight, thick brows, rosy cheeks.
+		var eye := _feature(_head, hd, side * 0.33, -0.02, Mascot.patch_mesh(Vector3(0.036, 0.05, 0.02)), Mascot.soft_mat(INK, false, 0.25), 0.006)
+		var spark := _mesh(eye, Mascot.patch_mesh(Vector3(0.012, 0.014, 0.008)), Vector3(-0.01, 0.017, 0.016), Mascot.shine_mat())
+		spark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var raised: bool = k.get("smirk", false) and side > 0
+		_feature(_head, hd, side * 0.34, 0.31 if raised else 0.27, Mascot.patch_mesh(Vector3(0.04, float(k.get("brows", 0.012)), 0.01)), Mascot.soft_mat(Color(k.hair_color).lightened(0.08), false), 0.004)
+		_feature(_head, hd, side * 0.55, -0.24, Mascot.patch_mesh(Vector3(0.04, 0.022, 0.01)), Mascot.soft_mat(Color("#f29a86"), false), 0.004)
+	_feature(_head, hd, 0.0, -0.13, Mascot.patch_mesh(Vector3(0.026, 0.02, 0.02)), Mascot.soft_mat(Color("#eda98a")), 0.008)
+	var mouth := _feature(_head, hd, 0.06 if k.get("smirk", false) else 0.0, -0.36, Mascot.patch_mesh(Vector3(0.04, 0.014, 0.01)), Mascot.soft_mat(Color("#8a3f37"), false), 0.003)
+	if k.get("smirk", false):
+		mouth.rotation.z = 0.25
+	if k.get("glasses", false):
+		var frame := Mascot.soft_mat(Color("#2a2220"), false, 0.3)
+		for side in [-1.0, 1.0]:
+			var ring := MeshInstance3D.new()
+			var torus := TorusMesh.new()
+			torus.inner_radius = 0.052
+			torus.outer_radius = 0.062
+			ring.mesh = torus
+			ring.material_override = frame
+			var n := Mascot.surface_normal(hd, 0.0, side * 0.33, -0.02)
+			ring.position = Mascot.surface_point(hd, 0.0, side * 0.33, -0.02) + n * 0.03
+			ring.basis = Basis.looking_at(-n, Vector3.UP) * Basis(Vector3.RIGHT, PI * 0.5)
+			_head.add_child(ring)
+		_mesh(_head, Mascot.patch_mesh(Vector3(0.03, 0.006, 0.006)), Mascot.surface_point(hd, 0.0, 0.0, 0.0) + Vector3(0, 0, 0.03), frame)
+
+
+func _hair(hd: Vector3, k: Dictionary) -> void:
+	var hair := Mascot.soft_mat(k.hair_color)
+	var style := str(k.hair)
+	if k.get("hat", false):
+		# Hard hat: a white dome with a ridge and a brim; a little hair shows at the back.
+		_mesh(_head, Mascot.patch_mesh(hd, 0.0, Vector2(1.6, TAU - 1.6), Vector2(-0.35, 0.3), 0.012, Vector2i(14, 6)), Vector3.ZERO, hair)
+		var hat := Mascot.soft_mat(Color("#f2f0ea"), true, 0.4)
+		_mesh(_head, Mascot.patch_mesh(hd, 0.0, FULL_U, Vector2(0.28, PI * 0.5), 0.05, Vector2i(32, 10)), Vector3.ZERO, hat)
+		_mesh(_head, Mascot.patch_mesh(hd, 0.0, Vector2(-0.06, 0.06), Vector2(0.45, PI * 0.5), 0.056, Vector2i(2, 8)), Vector3.ZERO, Mascot.soft_mat(Color("#d9d4c8"), false))
+		_mesh(_head, Mascot.patch_mesh(Vector3(0.29, 0.018, 0.29)), Vector3(0, 0.07, 0.03), hat)
+		return
+	# Every style starts from a cap over the crown and the back of the head.
+	var hairline := 0.44 if style in ["bun", "bob"] else 0.6
+	_mesh(_head, Mascot.patch_mesh(hd, 0.0, FULL_U, Vector2(hairline, PI * 0.5), 0.02, Vector2i(32, 10)), Vector3.ZERO, hair)
+	_mesh(_head, Mascot.patch_mesh(hd, 0.0, Vector2(0.75, TAU - 0.75), Vector2(0.3, hairline + 0.05), 0.02, Vector2i(24, 4)), Vector3.ZERO, hair)
+	if style in ["bun", "bob"]:
+		# Fringe over the forehead; the men's styles leave it open.
+		_mesh(_head, Mascot.patch_mesh(hd, 0.0, Vector2(-0.75, 0.75), Vector2(0.26, 0.5), 0.02, Vector2i(14, 4)), Vector3.ZERO, hair)
+	_mesh(_head, Mascot.patch_mesh(hd, 0.0, Vector2(1.0, TAU - 1.0), Vector2(-0.6, 0.5), 0.02, Vector2i(22, 10)), Vector3.ZERO, hair)
+	match style:
+		"side":
+			var wave := _mesh(_head, Mascot.patch_mesh(Vector3(0.13, 0.05, 0.1)), Vector3(-0.07, 0.19, 0.1), hair)
+			wave.rotation.z = 0.25
+		"bun":
+			_mesh(_head, Mascot.patch_mesh(Vector3(0.085, 0.085, 0.085)), Vector3(-0.08, 0.17, -0.19), hair)
+			var sweep := _mesh(_head, Mascot.patch_mesh(Vector3(0.12, 0.05, 0.09)), Vector3(0.07, 0.18, 0.11), hair)
+			sweep.rotation.z = -0.3
+		"short":
+			pass
+		"bob":
+			for side in [-1.0, 1.0]:
+				_mesh(_head, Mascot.patch_mesh(Vector3(0.065, 0.17, 0.12)), Vector3(side * 0.205, -0.07, -0.01), hair)
+			_mesh(_head, Mascot.patch_mesh(Vector3(0.22, 0.17, 0.1)), Vector3(0, -0.06, -0.14), hair)
+		"curly":
+			for p in [Vector3(-0.12, 0.2, 0.08), Vector3(0.0, 0.24, 0.1), Vector3(0.12, 0.2, 0.08), Vector3(-0.17, 0.12, 0.0), Vector3(0.17, 0.12, 0.0), Vector3(-0.07, 0.25, -0.05), Vector3(0.08, 0.25, -0.05)]:
+				_mesh(_head, Mascot.patch_mesh(Vector3(0.07, 0.065, 0.07)), p, hair)
+		"slick":
+			var quiff := _mesh(_head, Mascot.patch_mesh(Vector3(0.14, 0.06, 0.11)), Vector3(0.04, 0.22, 0.09), hair)
+			quiff.rotation.z = -0.2
+
+
+## The thing each person carries, at the right hand.
+func _prop(kind: String, at: Vector3) -> void:
+	match kind:
+		"folder":
+			_box(_body, Vector3(0.03, 0.16, 0.12), at + Vector3(0.03, 0.03, 0.0), Color("#3a2a26"))
+		"tablet":
+			var t := _box(_body, Vector3(0.13, 0.17, 0.016), at + Vector3(-0.03, 0.1, 0.08), Color("#55585e"))
+			t.rotation.x = -0.5
+			_box(t, Vector3(0.11, 0.15, 0.004), Vector3(0, 0, 0.01), Color("#8fb7cf"), false)
+		"clipboard":
+			var c := _box(_body, Vector3(0.13, 0.17, 0.012), at + Vector3(-0.05, 0.08, 0.08), Color("#7a5236"))
+			c.rotation.x = -0.35
+			_box(c, Vector3(0.11, 0.14, 0.004), Vector3(0, -0.008, 0.009), Color("#f7f4ec"), false)
+			for row in 3:
+				_box(c, Vector3(0.016, 0.016, 0.004), Vector3(-0.035, 0.04 - row * 0.035, 0.012), Color("#4f9a52"), false)
+				_box(c, Vector3(0.05, 0.006, 0.004), Vector3(0.012, 0.04 - row * 0.035, 0.012), Color("#b9b4a8"), false)
+		"coffee":
+			var cup := MeshInstance3D.new()
+			var cyl := CylinderMesh.new()
+			cyl.top_radius = 0.036
+			cyl.bottom_radius = 0.03
+			cyl.height = 0.1
+			cup.mesh = cyl
+			cup.material_override = Mascot.soft_mat(Color("#f4efe4"))
+			cup.position = at + Vector3(-0.02, 0.08, 0.05)
+			_body.add_child(cup)
+			var sleeve := MeshInstance3D.new()
+			var band := CylinderMesh.new()
+			band.top_radius = 0.037
+			band.bottom_radius = 0.033
+			band.height = 0.04
+			sleeve.mesh = band
+			sleeve.material_override = Mascot.soft_mat(Color("#8a5a3a"), false)
+			cup.add_child(sleeve)
+		"envelope":
+			var e := _box(_body, Vector3(0.17, 0.13, 0.014), Vector3(0.03, 0.47, 0.15), Color("#e3b866"))
+			e.rotation.z = -0.15
+			_box(e, Vector3(0.02, 0.02, 0.004), Vector3(0, 0.03, 0.009), Color("#c99a48"), false)
+		"briefcase":
+			_box(_body, Vector3(0.19, 0.14, 0.06), at + Vector3(0.03, -0.07, 0.0), Color("#5a3626"))
+			_box(_body, Vector3(0.03, 0.02, 0.01), at + Vector3(0.03, -0.04, 0.034), Color("#d8b25a"), false)
+
+
+func _box(parent: Node3D, size: Vector3, position: Vector3, color: Color, outline: bool = true) -> MeshInstance3D:
+	var b := BoxMesh.new()
+	b.size = size
+	return _mesh(parent, b, position, Mascot.soft_mat(color, outline, 0.6))
+
+
+## Places a small part on the head surface, facing out along its normal.
+func _feature(parent: Node3D, dim: Vector3, u: float, v: float, mesh: Mesh, material: Material, sink: float = 0.0) -> MeshInstance3D:
+	var n := Mascot.surface_normal(dim, 0.0, u, v)
+	var instance := _mesh(parent, mesh, Mascot.surface_point(dim, 0.0, u, v) - n * sink, material)
+	instance.basis = Basis.looking_at(-n, Vector3.UP)
+	return instance
+
+
 func talk() -> void:
 	_talk = 1.0
 
@@ -67,3 +280,5 @@ func _process(delta: float) -> void:
 	_body.rotation.z = sin(t * 0.9) * 0.015
 	_head.rotation.x = sin(t * 1.3) * 0.03 + sin(_talk * PI * 4.0) * 0.12 * _talk
 	_head.rotation.y = sin(t * 0.5) * 0.12
+	for i in _arms.size():
+		_arms[i].rotation.x = sin(t * 1.1 + i) * 0.04 - sin(_talk * PI * 2.0) * 0.25 * _talk * float(i)

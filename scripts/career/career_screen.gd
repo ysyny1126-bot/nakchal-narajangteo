@@ -27,7 +27,7 @@ const KIND_NAME := {"careful": "꼼꼼히", "quick": "빠르게", "easy": "편�
 const KIND_COLOR := {"careful": Color("#3f8f6a"), "quick": Color("#3f78a8"), "easy": Color("#c2493d"), "bonus": Color("#8a63c4")}
 ## Which office spot holds a card of each type.
 const SPOT_OF := {"work": "desk", "civil": "counter", "lure": "visit", "field": "door", "bonus": "peer"}
-const VISITORS := {"counter": ["민원인", Color("#6b8f5a")], "visit": ["업체 직원", Color("#5d5f66")]}
+const VISITORS := {"counter": ["민원인", Color("#6b8f5a"), "visitor_civil"], "visit": ["업체 직원", Color("#5d5f66"), "visitor_vendor"]}
 const NEAR := 0.85
 
 ## Main scene (sound, modal, mascots, 3D stage, save).
@@ -678,7 +678,8 @@ func _sync_spots() -> void:
 		var has := _visitors.has(id) and is_instance_valid(_visitors[id])
 		if want and not has:
 			var npc := Npc.new()
-			npc.build(VISITORS[id][0], VISITORS[id][1], Color("#2a2522"), Color("#eac2a0"), Color("#d8b25a"))
+			if not npc.build_person(VISITORS[id][0], VISITORS[id][2]):
+				npc.build(VISITORS[id][0], VISITORS[id][1], Color("#2a2522"), Color("#eac2a0"), Color("#d8b25a"))
 			npc.position = spots[id].visitor[0]
 			npc.rotation.y = spots[id].visitor[1]
 			_stage.add_child(npc)
