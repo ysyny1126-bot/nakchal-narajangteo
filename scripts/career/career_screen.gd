@@ -32,16 +32,17 @@ const SPOT_OF := {"work": "desk", "civil": "counter", "lure": "visit", "field": 
 const VISITORS := {"counter": ["민원인", Color("#6b8f5a"), "visitor_civil"], "visit": ["업체 직원", Color("#5d5f66"), "visitor_vendor"]}
 const NEAR := 0.85
 ## What a visitor says on arrival: line and mood.
-const VISITOR_HELLO := {"counter": ["저… 여쭤볼 게 있는데요.", "worry"], "visit": ["잠깐 시간 괜찮으세요?", "sly"]}
+const VISITOR_HELLO := {"counter": ["저기요~", "worry"], "visit": ["ㅎㅎ", "sly"]}
 const MOOD_COLOR := {"calm": Color("#1f3d4a"), "happy": Color("#3f8f6a"), "worry": Color("#e07a35"), "sly": Color("#8a63c4")}
 ## Background chatter by who is speaking; lead lines are per episode.
+## Kept to a sigh or an emoticon; the border colour carries the mood.
 const CHATTER := {
-	"lead1": [["이번 공고, 꼼꼼히 봐요.", "calm"], ["규격서는 성능 기준으로!", "calm"], ["커피 한잔 할까…", "happy"]],
-	"lead2": [["가격 그래프가 좀 수상한데…", "worry"], ["오늘 문의가 많네요.", "calm"], ["상생세일 반응 좋아요!", "happy"]],
-	"lead3": [["납기 D-10, 서둘러야 해요.", "worry"], ["검수는 눈으로, 손으로!", "calm"], ["현장은 안전이 먼저!", "calm"]],
-	"peer": [["후… 서류가 산더미네요.", "worry"], ["커피가 다 식었네…", "calm"], ["오늘 점심 뭐 먹지?", "happy"], ["힘내요, 신입님!", "happy"]],
-	"counter": [["언제쯤 처리될까요…", "worry"], ["서류 이거 맞나요?", "worry"]],
-	"visit": [["이번 건, 잘 부탁드려요~", "sly"], ["저희 제품 정말 좋아요.", "sly"]],
+	"lead1": [["음…", "calm"], ["^^", "happy"], ["흠흠", "calm"]],
+	"lead2": [["음…?", "worry"], ["^^", "happy"], ["!?", "worry"]],
+	"lead3": [["서둘러요!", "worry"], ["^^b", "happy"], ["음…", "calm"]],
+	"peer": [["후…", "worry"], ["ㅎㅎ", "happy"], ["^^", "happy"], ["하암~", "calm"]],
+	"counter": [["저기요…", "worry"], ["음…?", "worry"]],
+	"visit": [["ㅎㅎ", "sly"], ["^^;", "sly"]],
 }
 
 ## Main scene (sound, modal, mascots, 3D stage, save).
@@ -2523,7 +2524,7 @@ func _update_talk(delta: float) -> void:
 	_chatter = randf_range(10.0, 15.0)
 	var npcs: Dictionary = game.layout.get("npcs", {})
 	if state.phase == "boss_wait" and npcs.has("lead"):
-		npc_say(npcs.lead, "잠깐 제 자리로 와 볼래요?", "calm", 4.0)
+		npc_say(npcs.lead, "잠깐요~", "calm", 4.0)
 		npcs.lead.play("wave" if npcs.lead.idle_actions.has("wave") else "nod")
 		return
 	var who := []
@@ -2558,7 +2559,7 @@ func _ring_phone() -> void:
 	for i in 8:
 		t.tween_property(phone, "rotation:z", 0.12 if i % 2 == 0 else -0.12, 0.05)
 	t.tween_property(phone, "rotation:z", 0.0, 0.05)
-	npc_say(phone, "따르릉~ 따르릉~", "worry", 2.2, 0.12)
+	npc_say(phone, "따르릉~", "worry", 2.2, 0.12)
 	game.sound.play("ring")
 
 
@@ -2573,9 +2574,9 @@ func _colleague_reaction() -> void:
 	if not is_instance_valid(who):
 		return
 	match kind:
-		"principled": npc_say(who, ["오, 원칙대로! 멋져요.", "좋아요, 그렇게 하는 거예요.", "깔끔하네요!"][randi() % 3], "happy")
-		"quick": npc_say(who, "그거… 다시 안 봐도 돼요?", "worry")
-		"easy": npc_say(who, "음… 괜찮을까요?", "worry")
+		"principled": npc_say(who, ["^^b", "오~", "ㅎㅎ"][randi() % 3], "happy")
+		"quick": npc_say(who, "!?", "worry")
+		"easy": npc_say(who, "음…", "worry")
 	who.play("nod" if kind == "principled" else "scratch" if who.idle_actions.has("scratch") else "look", 1.4)
 	_chatter = maxf(_chatter, 8.0)
 
