@@ -680,6 +680,10 @@ func cine_prefetch(names: Array) -> void:
 	if not OS.has_feature("web"):
 		return
 	var base := str(JavaScriptBridge.eval("location.href.split('?')[0].split('#')[0].replace(/[^/]*$/, '')"))
+	# Opened straight from disk (file://): HTTPRequest refuses that scheme, so ask a
+	# placeholder http address; the page's packed-data loader answers by file name.
+	if base.begins_with("file:"):
+		base = "http://nakchal.local/"
 	for clip_name in names:
 		if _cine_local.has(clip_name) or _cine_requests.has(clip_name):
 			continue
