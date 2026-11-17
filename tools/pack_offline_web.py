@@ -22,6 +22,16 @@ LOADER = r'''<script src="index.data.js"></script>
 (function () {
 	var F = window.NAKCHAL_FILES || {};
 	var raw = window.fetch.bind(window);
+	/* Opened straight out of the ZIP (data file missing): explain instead of failing. */
+	if (!window.NAKCHAL_FILES && location.protocol === 'file:') {
+		document.addEventListener('DOMContentLoaded', function () {
+			var d = document.createElement('div');
+			d.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#12302a;color:#fbf6ea;font:600 18px/1.7 sans-serif;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px';
+			d.innerHTML = '<div><b style="display:block;font-size:34px;margin-bottom:12px;color:#ffb33f">압축을 먼저 풀어 주세요</b>' +
+				'지금은 ZIP 파일 안에서 바로 열려서 게임 데이터를 찾지 못했어요.<br>ZIP 파일을 [압축 풀기] 한 뒤, 풀린 폴더의 index.html 을 다시 열어 주세요.</div>';
+			document.body.appendChild(d);
+		});
+	}
 	/* No service workers on file:// pages; answer "none registered" instead of throwing. */
 	if (location.protocol === 'file:' && navigator.serviceWorker) {
 		try {
