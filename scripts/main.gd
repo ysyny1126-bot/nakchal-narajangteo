@@ -101,7 +101,7 @@ func _ready() -> void:
 	_show_title()
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--capture" or arg.begins_with("--video="):
-			var script_path := "res://scripts/dev/capture_director.gd" if arg == "--capture" else "res://scripts/dev/video_director.gd"
+			var script_path := "res://scripts/dev/capture_director.gd" if arg == "--capture" else ("res://scripts/dev/demo_director.gd" if arg == "--video=demo" else "res://scripts/dev/video_director.gd")
 			var director: Node = load(script_path).new()
 			director.game = self
 			if arg.begins_with("--video="):
