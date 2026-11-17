@@ -148,16 +148,33 @@ func _spot_of(cs: Control, card_id: String) -> String:
 	return "desk"
 
 
-## Switches the office to another episode's room and starts its first day.
-func _episode(cs: Control, ep: int, rank: int) -> void:
-	var c: Dictionary = game.career
-	c.ep = ep
-	c.rank = rank
-	c.day = 1
-	c.hand = []
-	game._career_stage()
-	cs.start_day()
-	cs.refresh()
+# --- Fast-forward badge ------------------------------------------------------
+
+var _ff: PanelContainer
+
+
+## Runs the game at `scale` speed and shows a small "▶▶ 2배속" badge while it does.
+func _speed(scale: float) -> void:
+	Engine.time_scale = scale
+	if _ff == null:
+		_ff = PanelContainer.new()
+		_ff.add_theme_stylebox_override("panel", UI.panel(Color("#000000aa"), Color("#ffffff40"), 14, 8))
+		_ff.add_child(UI.label("▶▶ 2배속", 18, Color.WHITE, true))
+		_layer.add_child(_ff)
+		_ff.position = Vector2(28, 108)
+	_ff.visible = scale > 1.01
+
+
+func _fast_walk(target: Vector3, limit: float = 4.0) -> void:
+	_speed(2.0)
+	await _walk(target, limit * 2.0)
+	_speed(1.0)
+
+
+func _do_card(cs: Control, id: String, kind: String) -> void:
+	cs._open_card(id)
+	cs._on_choice("c_pick:" + kind, {})
+	cs._after_card()
 
 
 # --- The run ----------------------------------------------------------------
@@ -168,7 +185,7 @@ func _run() -> void:
 	_say("낙찰!", "조달청 신입 공무원이 되어 공공조달을 배우는 3D 업무 시뮬레이션")
 	await _wait(1.0)
 	await _shot("title")
-	await _wait(2.8)
+	await _wait(1.6)
 	_hush()
 	# 2. Story clip (the intro, cut short), then skip the EP1 clip.
 	game._career_ask_name()
@@ -177,74 +194,134 @@ func _run() -> void:
 	game._career_name_entered()
 	await _wait(1.2)
 	await _shot("intro_clip")
-	await _wait(6.4)
+	await _wait(4.0)
 	game._cutscene_skip = true
 	await _wait(0.15)
 	game._cutscene_skip = true
 	await _wait(0.4)
 	# 3. Briefing with the month's three numbered tasks.
 	var cs: Control = game._career
-	_say("① 브리핑", "상사가 이번 달 할 일 3가지를 알려 줘요")
+	_say("① 브리핑", "박 팀장이 이번 달 할 일 3가지를 알려 줘요")
 	await _wait(0.8)
 	await _shot("briefing")
-	await _wait(3.2)
+	await _wait(1.8)
 	game.modal.close()
 	cs._on_choice("c_start", {})
-	await _wait(0.6)
-	# 4. Walk to the spec card, open it, spot the trap, handle it the careful way.
+	await _wait(0.4)
+	# 4. Day 1: walk to the spec card, spot the trap, handle it the careful way.
 	_say("② 업무 카드", "사무실을 걸어 다니며 주황색 표시의 업무를 처리해요")
 	var spot := _spot_of(cs, "e1_spec")
-	await _walk(game.layout.spots[spot].stand + Vector3(0.05, 0, 0.12))
-	await _wait(0.5)
-	await _shot("walk")
+	await _fast_walk(game.layout.spots[spot].stand + Vector3(0.05, 0, 0.12))
 	var several: bool = (cs._spot_cards().get(spot, []) as Array).size() > 1
 	cs.interact()
-	await _wait(0.9)
+	await _wait(0.5)
 	if several:
 		cs._paper_choice("c_open:e1_spec")
-	await _wait(0.4)
-	_say("② 업무 카드", "규격서에 숨은 함정: 특정 상표 지정 → 공정 경쟁 위반")
-	await _wait(1.0)
+	await _wait(0.3)
+	_say("② 업무 카드", "규격서 속 함정: 특정 상표 지정 → 공정 경쟁 위반")
+	await _wait(0.8)
 	await _shot("card")
-	await _wait(3.0)
+	await _wait(1.8)
 	_say("② 업무 카드", "원칙대로 ‘꼼꼼히’ 처리하면 쾅! 도장과 오늘의 배움")
 	cs._on_choice("c_pick:careful", {})
-	await _wait(1.4)
+	await _wait(1.2)
 	await _shot("stamp")
-	await _wait(2.8)
+	await _wait(1.4)
 	cs._after_card()
-	await _wait(0.3)
-	# A second card: a phone call asking for the spec before the notice is out.
+	await _wait(0.2)
+	# The phone call asking for the spec before the notice is out.
 	_say("② 업무 카드", "공고 전에 규격을 알려 달라는 전화? 누구에게도 미리 주지 않아요")
+	# Keep today's dropped memo out of the path so its card does not pop up mid-walk.
+	if is_instance_valid(cs._memo):
+		cs._memo.queue_free()
+	cs.state.memo_today = ""
 	var call_stand: Vector3 = game.layout.spots[_spot_of(cs, "e1_call")].stand
-	# Go round the desk: first down to the counter's row, then across to it.
 	var me: Vector3 = game.player.global_position
-	await _walk(Vector3(me.x, 0, maxf(call_stand.z, me.z + 0.9)), 2.0)
-	await _walk(call_stand + Vector3(0.05, 0, 0.12), 3.0)
-	await _wait(0.3)
+	await _fast_walk(Vector3(me.x, 0, maxf(call_stand.z, me.z + 0.9)), 2.0)
+	await _fast_walk(call_stand + Vector3(0.05, 0, 0.12), 3.0)
 	game.narami.face_point(game.layout.spots[_spot_of(cs, "e1_call")].anchor)
 	cs._open_card("e1_call")
-	await _wait(0.6)
-	await _wait(2.2)
+	await _wait(1.6)
 	await _shot("call")
 	cs._on_choice("c_pick:careful", {})
-	await _wait(2.6)
+	await _wait(1.8)
 	cs._after_card()
-	await _wait(0.3)
-	# 5. Each episode moves to a different office.
-	_say("③ EP2 쇼핑몰운영과", "승진할수록 부서와 사무실, 함께 일하는 사람이 바뀌어요")
-	await _episode(cs, 2, 2)
-	await _wait(0.3)
-	await _walk(game.layout.spots.desk.stand + Vector3(0.6, 0, 0.5), 2.2)
-	await _shot("ep2")
+	_do_card(cs, "e1_date", "quick")
+	await _wait(0.2)
+	# 5. Going home: the day's stars and a stamp per card.
+	_say("③ 퇴근", "하루를 마치면 별점과 처리한 업무를 한눈에 돌아봐요")
+	cs._end_day()
+	await _wait(1.0)
+	await _shot("evening")
+	await _wait(1.6)
+	# Days 2-3 off camera, then the boss case at the team lead's desk.
+	cs._on_choice("c_next_day", {})
+	for pick in [["e1_basis", "careful"], ["e1_dinner", "careful"], ["e1_reserve", "careful"]]:
+		_do_card(cs, pick[0], pick[1])
+	cs._end_day()
+	cs._on_choice("c_next_day", {})
+	for pick in [["e1_open", "careful"], ["e1_coffee", "bonus"], ["e1_protest", "quick"]]:
+		_do_card(cs, pick[0], pick[1])
+	cs._end_day()
+	cs._on_choice("c_boss_wait", {})
+	_say("④ 핵심 사건", "3일째, 1순위 업체가 낸 실적 증명서가 수상해요")
+	await _fast_walk(game.layout.spots.lead.stand, 3.0)
+	cs.interact()
+	await _wait(1.0)
+	await _shot("boss")
+	await _wait(1.6)
+	cs._on_choice("c_boss_pick:careful", {})
+	await _wait(1.0)
+	cs._on_choice("c_boss_next", {})
+	cs._on_choice("c_boss_pick:careful", {})
+	await _wait(1.2)
+	# 6. Friday audit: the cards flip one by one.
+	_say("⑤ 금요일 감사", "빠르게 처리한 카드의 숨은 실수가 한 장씩 드러나요")
+	cs._on_choice("c_audit", {})
+	await _wait(2.6)
+	await _shot("audit")
+	await _wait(1.4)
+	# Term quiz: one answer with Dali's explanation, the rest quickly.
+	_say("⑤ 용어 퀴즈", "그달에 배운 조달 용어를 퀴즈로 다시 확인해요")
+	cs._on_choice("c_quiz", {})
+	await _wait(0.6)
+	var quiz: Array = preload("res://scripts/core/glossary.gd").QUIZ[1]
+	for qi in range(3):
+		cs._on_choice("c_quiz_answer:%d" % int(quiz[qi].answer), {})
+		if qi == 0:
+			await _wait(1.0)
+			await _shot("quiz")
+			await _wait(1.2)
+		cs._on_choice("c_quiz_next" if qi < 2 else "c_promote", {})
+	# Promotion: the appointment with the salary count-up and new desk items.
+	_say("⑥ 승진", "평가 등급과 함께 임용장! 연봉과 책상 비품이 늘어나요")
+	await _wait(1.2)
+	await _shot("promotion")
 	await _wait(2.2)
-	_say("③ EP3 품질관리과", "납품 현장 검사와 대금 지급까지, 조달의 끝까지 따라가요")
-	await _episode(cs, 3, 3)
+	# 7. My desk: earned items, then buy a plant at the staff store.
+	_hush()
+	game.modal.close()
+	if is_instance_valid(cs._overlay):
+		cs._overlay.queue_free()
+	cs._overlay = null
+	game._show_desk()
 	await _wait(0.3)
-	await _walk(game.layout.spots.desk.stand + Vector3(-0.5, 0, 0.6), 2.2)
-	await _shot("ep3")
-	await _wait(2.2)
-	# 6. Ending certificate.
+	_say("⑦ 내 책상", "승진·표창·교육으로 비품을 모으고 복지포인트로 꾸며요")
+	var desk: Control = game._desk
+	await _wait(1.2)
+	await _shot("desk")
+	await _wait(0.6)
+	desk._set_category("store")
+	desk._select("plant")
+	desk._refresh()
+	await _wait(0.6)
+	desk._on_main()
+	await _wait(1.2)
+	await _shot("desk_store")
+	desk.closed.emit()
+	await _wait(1.4)
+	await _shot("desk_office")
+	# 8. Ending certificate.
 	var c: Dictionary = game.career
 	c.rank = 4
 	c.salary = 4250
@@ -253,12 +330,12 @@ func _run() -> void:
 	c.integrity = 92
 	c.total_mistakes = 1
 	c.burnouts = 0
-	_say("④ 엔딩", "선택에 따라 5가지 엔딩 · 마지막엔 수료증")
+	_say("⑧ 엔딩", "EP3까지 마치면 선택에 따라 5가지 엔딩과 수료증")
 	cs._final()
-	await _wait(2.0)
+	await _wait(1.8)
 	await _shot("certificate")
-	await _wait(5.0)
+	await _wait(2.4)
 	_hush()
-	# 7. Closing card.
-	await _card("2026 조달청 AI 게임·콘텐츠 공모전", "낙찰! 조달청 사원 키우기", ["설치 없이 웹에서 바로 · PC · 모바일", URL], 4.5)
+	# 9. Closing card.
+	await _card("2026 조달청 AI 게임·콘텐츠 공모전", "낙찰! 조달청 사원 키우기", ["설치 없이 웹에서 바로 · PC · 모바일", URL], 3.6)
 	get_tree().quit()
